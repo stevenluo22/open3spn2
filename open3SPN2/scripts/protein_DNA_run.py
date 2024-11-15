@@ -186,6 +186,9 @@ def run(args):
         print("Initial min energies")
         printEnergy(simulation, forces)
         savePDB(toPath, simulation, PDBfile_name = "init_min.pdb")
+        dcd_reporter=openmm.app.DCDReporter(os.path.join(toPath, "output.dcd"), 1)
+        simulation.reporters.append(dcd_reporter)
+        simulation.step(1)
         # MD minimization block
         integrator = openmm.LangevinIntegrator(Tstart*openmm.unit.kelvin, 1/openmm.unit.picosecond, args.timeStep*openmm.unit.femtoseconds)
         simulation = openmm.app.Simulation(top,s, integrator, platform)
@@ -199,10 +202,8 @@ def run(args):
         savePDB(toPath, simulation, PDBfile_name = "MD_min.pdb")
         print("Now T = 300 K min energies")
         printEnergy(simulation, forces)
-        print("minization end")
-        dcd_reporter=openmm.app.DCDReporter(os.path.join(toPath, "output.dcd"), 1)
-        simulation.reporters.append(dcd_reporter)
         simulation.step(1)
+        print("minization end")
 
     #simulation = openmm.app.Simulation(top,s, integrator, platform)
     
