@@ -40,6 +40,12 @@ def printEnergy(simulation, forces):
     for force_name in forces.keys():
         print(force_name, round(energies[force_name],6),energy_unit.get_symbol())
 
+def savePDB(toPath, simulation, PDBfile_name):
+    state = simulation.context.getState(getPositions=True)
+    positions = state.getPositions()
+    with open(os.path.join(toPath, PDBfile_name), "w") as pdb_file:
+        openmm.app.PDBFile.writeFile(simulation.topology, positions, file=pdb_file)
+
 def run(args):
     simulation_platform = args.platform
     platform = openmm.Platform.getPlatformByName(simulation_platform)
@@ -168,17 +174,36 @@ def run(args):
         simulation = openmm.app.Simulation(top,s, integrator, platform)
         simulation.loadCheckpoint(checkPointPath)
     else:
+        # initial minimization block
+        print("minization start")
+        integrator = openmm.CustomIntegrator(0.001)
+        simulation = openmm.app.Simulation(top,s, integrator, platform)
+        simulation.context.setPositions(coord)
+        print("Initial energies")
+        printEnergy(simulation, forces)
+        savePDB(toPath, simulation, PDBfile_name = "init.pdb")
+        simulation.minimizeEnergy() 
+        print("Initial min energies")
+        printEnergy(simulation, forces)
+        savePDB(toPath, simulation, PDBfile_name = "init_min.pdb")
+        # MD minimization block
         integrator = openmm.LangevinIntegrator(Tstart*openmm.unit.kelvin, 1/openmm.unit.picosecond, args.timeStep*openmm.unit.femtoseconds)
         simulation = openmm.app.Simulation(top,s, integrator, platform)
-        simulation.context.setPositions(coord)  # set the initial positions of the atoms
-        dcd_reporter = openmm.app.DCDReporter(os.path.join(toPath, "output.dcd"), 1)
-        simulation.reporters.append(dcd_reporter)
+        #simulation.context.setPositions(coord)  # set the initial positions of the atoms
+        print("Now T = 300 K energies")
+        init_min_pdb = openmm.app.PDBFile(os.path.join(toPath, "init_min.pdb"))
+        simulation.context.setPositions(init_min_pdb.positions)
         simulation.context.setVelocitiesToTemperature(Tstart*openmm.unit.kelvin)
-        simulation.step(int(1))
         printEnergy(simulation, forces)
         simulation.minimizeEnergy()  # first, minimize the energy to a local minimum to reduce any large forces that might be present
-        simulation.step(int(1))
+        savePDB(toPath, simulation, PDBfile_name = "MD_min.pdb")
+        print("Now T = 300 K min energies")
         printEnergy(simulation, forces)
+        print("minization end")
+        dcd_reporter=openmm.app.DCDReporter(os.path.join(toPath, "output.dcd"), 1)
+        simulation.reporters.append(dcd_reporter)
+        simulation.step(1)
+
     #simulation = openmm.app.Simulation(top,s, integrator, platform)
     
     energy_unit=openmm.unit.kilocalorie_per_mole
