@@ -181,7 +181,7 @@ def run(args):
     temperature=args.tempStart * openmm.unit.kelvin
     Tstart = args.tempStart
     output = args.output
-    platform_name='OpenCL' #'Reference','CPU','CUDA', 'OpenCL'
+    platform_name=args.Platform #'Reference','CPU','CUDA', 'OpenCL'
 
     integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond, 2 * openmm.unit.femtoseconds)
     platform = openmm.Platform.getPlatformByName(platform_name)
@@ -264,7 +264,8 @@ def main():
     parser.add_argument("--tempStart", type=float, default=300, help="Starting temperature")
     parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
     parser.add_argument("-a", "--AWSEM", type=str, default="./", help="protein-only AWSEM folder, should have fragment library") #not temporary
-    parser.add_argument("-o", "--output", type=str, default="energy_output.log")
+    parser.add_argument("-o", "--output", type=str, default="energy_output.log", help="Output file.")
+    parser.add_argument("-p", "--Platform", type=str, default="OpenCL", help="platform to use")
     parser.add_argument("--timeStep", type=int, default=2)
     args = parser.parse_args()
 
