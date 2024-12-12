@@ -7,9 +7,11 @@
 import sys
 import os
 # open3SPN2_HOME = '/Users/weilu/open3spn2/'
-openAWSEM_HOME = '/home/sl206/Programs/openawsem'
+#openAWSEM_HOME = '/home/sl206/Programs/openawsem'
 # sys.path.insert(0,open3SPN2_HOME)
-sys.path.insert(0,openAWSEM_HOME)
+#sys.path.insert(0,openAWSEM_HOME)
+
+import importlib.util
 
 #sys.path.append('/home/sl206/miniconda3/envs/openmm/lib/python3.6')
 #sys.path.append('/home/sl206/miniconda3/envs/openmm/lib/python3.6/site-packages')
@@ -109,73 +111,16 @@ def run(args):
 
     print(s.getForces())
 
-    forces={}
-    for i in range(s.getNumForces()):
-        force = s.getForce(i)
-        force_name="CMMotionRemover"
+    forceSetupFile = args.forces
+    #forces={}
 
-    #Add 3SPN2 forces
-    for force_name in open3SPN2.forces:
-        print(force_name)
-        force = open3SPN2.forces[force_name](dna)
-        if force_name in ['BasePair','CrossStacking']:
-            force.addForce(s)
-        else:
-            s.addForce(force)
-        forces.update({force_name:force})
-
-    #Add AWSEM forces. Fragment memories are in the protein residue only AWSEM-created folder
-    frags_dir = args.AWSEM
-    openAWSEMforces = dict(Connectivity=openawsem.functionTerms.basicTerms.con_term,
-                        Chain=openawsem.functionTerms.basicTerms.chain_term,
-                        Chi=openawsem.functionTerms.basicTerms.chi_term,
-                        Excl=openawsem.functionTerms.basicTerms.excl_term,
-                        rama=openawsem.functionTerms.basicTerms.rama_term,
-                        rama_pro=openawsem.functionTerms.basicTerms.rama_proline_term,
-                        contact=openawsem.functionTerms.contactTerms.contact_term,
-                        frag  = partial(openawsem.functionTerms.templateTerms.fragment_memory_term, 
-                                        frag_file_list_file=f"{frags_dir}/{args.fragment}", 
-                                        UseSavedFragTable=False, 
-                                        k_fm=0.04184/3),
-                        beta1 = openawsem.functionTerms.hydrogenBondTerms.beta_term_1,
-                        beta2 = openawsem.functionTerms.hydrogenBondTerms.beta_term_2,
-                        beta3 = openawsem.functionTerms.hydrogenBondTerms.beta_term_3,
-                        pap1 = partial(openawsem.functionTerms.hydrogenBondTerms.pap_term_1,
-                                        ssweightFileName=f"{frags_dir}/ssweight"),
-                        pap2 = partial(openawsem.functionTerms.hydrogenBondTerms.pap_term_2,
-                                        ssweightFileName=f"{frags_dir}/ssweight"),
-                        DH = partial(openawsem.functionTerms.debyeHuckelTerms.debye_huckel_term, 
-                                        chargeFile=f"{frags_dir}/charge.txt")
-                        )
-
-    protein.setup_virtual_sites(s)
-
-    #Add DNA-protein interaction forces
-    for force_name in open3SPN2.protein_dna_forces:
-        print(force_name)
-        force = open3SPN2.protein_dna_forces[force_name](dna,protein)
-        s.addForce(force)
-        forces.update({force_name: force})  
-        
-    #OpenAWSEM forces with exclusions
-    for force_name in openAWSEMforces:
-        print(force_name)
-        if force_name in ['contact']:
-            force = openAWSEMforces[force_name](protein, withExclusion=False,periodic=False)
-            print(force_name, "pre-add #Exclusions", force.getNumExclusions())
-            open3SPN2.addNonBondedExclusions(dna,force)
-            print(force_name, "post-add #Exclusions", force.getNumExclusions())
-        elif force_name in ['Excl']:
-            force = openAWSEMforces[force_name](protein)
-            print(force_name, "pre-add #Exclusions", force.getNumExclusions())
-            open3SPN2.addNonBondedExclusions(dna,force)
-            print(force_name, "post-add #Exclusions", force.getNumExclusions())
-        #continue
-        else:
-            force = openAWSEMforces[force_name](protein)
-        s.addForce(force)
-        forces.update({force_name: force})
-
+    print(f"using force setup file from {forceSetupFile}")
+    spec = importlib.util.spec_from_file_location("forces", forceSetupFile)
+    # print(spec)
+    forces_file = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(forces_file)
+    forces = forces_file.set_up_forces(s,protein, dna, computeQ = False)
+ 
     # #Initialize Molecular Dynamics simulations
 
     temperature=args.tempStart * openmm.unit.kelvin
@@ -262,8 +207,9 @@ def main():
 
     parser.add_argument("proteinDNA", help="The name of the proteinDNA system")
     parser.add_argument("--tempStart", type=float, default=300, help="Starting temperature")
-    parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
-    parser.add_argument("-a", "--AWSEM", type=str, default="./", help="protein-only AWSEM folder, should have fragment library") #not temporary
+    #parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
+    #parser.add_argument("-a", "--AWSEM", type=str, default="./", help="protein-only AWSEM folder, should have fragment library") #not temporary
+    parser.add_argument("-f", "--forces", type=str, default="forces_setup.py", help="forces setup file") #not temporary
     parser.add_argument("-o", "--output", type=str, default="energy_output.log", help="Output file.")
     parser.add_argument("-p", "--Platform", type=str, default="OpenCL", help="platform to use")
     parser.add_argument("--timeStep", type=int, default=2)
