@@ -65,7 +65,7 @@ def run(args):
     # print(spec)
     forces_file = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(forces_file)
-    forces = forces_file.set_up_forces(s,protein, dna, computeQ = False)
+    forces = forces_file.set_up_forces(s,protein, dna, computeQ = True)
 
     #Initialize the simulation
     temperature=300 * openmm.unit.kelvin
@@ -80,37 +80,103 @@ def run(args):
 
     trajectory = md.load(args.trajectory, top=args.proteinDNA)
 
-    energy_data = []
-    for step, frame in enumerate(trajectory):
-        simulation.context.setPositions(frame.xyz[0])
-        #Obtain total energy
-        state = simulation.context.getState(getEnergy=True)
-        energy = state.getPotentialEnergy().value_in_unit(energy_unit)
+    forceGroupTable = {
+                "Q": 1,
+                "Rg": 2,
+                # "Rg_bias": 5,
+                "Bond": 6,
+                "Angle": 7,
+                "Stacking": 8,
+                "Dihedral": 9,
+                "BasePair": 10,
+                "CrossStacking": 11,
+                "ExclusionDNA": 12,
+                "ElectrostaticsDNA": 13,
+                "ExclusionProteinDNA": 14,
+                "ElectrostaticsProteinDNA": 15,
+                # "Reserved_for_direct_protein_DNA_readout_interactions": 16,
+                # "Burial": 17,
+                # "Helix_orientation": 18,
+                # "Pulling": 19,
+                "Backbone": 20,
+                "Rama": 21,
+                "Contact": 22,
+                "Fragment": 23,
+                # "Membrane": 24,
+                # "ER": 25,
+                # "TBM_Q": 26,
+                "Beta": 27,
+                "Pap": 28,
+                "Helical": 29,
+                "Debye_Huckel": 30,
+                "AMH-Go": 31,
+                "Total_Energy": list(range(5, 32))
+                }
+    print("Verify forceGroupTable in protein_DNA_analysis is set up correctly.")
+    print("Total Energy includes forceGroups from 5 to 31, both sides inclusive.")
+    showValue = ["Q", "Rg"]
+    showEnergy = [
+                # "Rg_bias",
+                "Bond", 
+                "Angle",
+                "Stacking",
+                "Dihedral",
+                "BasePair",
+                "CrossStacking",
+                "ExclusionDNA",
+                "ElectrostaticsDNA",
+                "ExclusionProteinDNA",
+                "ElectrostaticsProteinDNA",
+                # "Reserved_for_direct_protein_DNA_readout_interactions", 
+                # "Burial",
+                # "Helix_orientation",
+                # "Pulling", 
+                "Backbone",
+                "Rama",
+                "Contact",
+                "Fragment",
+                # "Membrane",
+                # "ER",
+                # "TBM_Q",
+                "Beta",
+                "Pap",
+                "Helical",
+                "Debye_Huckel",
+                "AMH-Go",
+                "Total_Energy"
+    ]
+    showAll = showValue + showEnergy
 
-        # Collect energies
-        energies = {}
-        
-        for force_name, force in forces.items():
-            group = force.getForceGroup()
-            state = simulation.context.getState(getEnergy=True, groups=2**group)
-            energies[force_name] = state.getPotentialEnergy().value_in_unit(energy_unit)
+    print("Printing energies")
 
-        energy_data.append({"TotalEnergy": energy, **energies})
-
-    energy_df = pd.DataFrame(energy_data)
-    showAll = {"TotalEnergy": energy, **energies}
-
-    # write energy_df into info.dat
     with open(outFile, "w") as out:
-        line = " ".join(["{0:<8s}".format(i) for i in ["Steps"] + list(showAll.keys())])
+        line = " ".join(["{0:<8s}".format(i) for i in ["Steps"] + showAll])
         print(line)
         out.write(line+"\n")
-        
-        for step, e in enumerate(energy_data):
-            line = " ".join([f"{step:<8}"] + ["{0:<8.2f}".format(i) for i in e.values()])
+        # for step, pdb in enumerate(pdb_trajectory):
+        #     simulation.context.setPositions(pdb.positions)
+        for step in range(len(trajectory)):
+            simulation.context.setPositions(trajectory.openmm_positions(step))
+            e = []
+            for term in showAll:
+                if type(forceGroupTable[term]) == list:
+                    g = set(forceGroupTable[term])
+                elif forceGroupTable[term] == -1:
+                    g = -1
+                else:
+                    g = {forceGroupTable[term]}
+                state = simulation.context.getState(getEnergy=True, groups=g)
+                # if term == "Q" or term == "Rg" or term == "Qc" or term == "Q_wat" or term == "Q_mem":
+                if term in showValue:
+                    termEnergy = state.getPotentialEnergy().value_in_unit(openmm.unit.kilojoule_per_mole)
+                else:
+                    termEnergy = state.getPotentialEnergy().value_in_unit(openmm.unit.kilocalories_per_mole)
+                e.append(termEnergy)
+        #     print(*e)
+            line = " ".join([f"{step:<8}"] + ["{0:<8.2f}".format(i) for i in e])
             print(line)
             out.write(line+"\n")
-
+        #         print(forceGroupTable[term], state.getPotentialEnergy().value_in_unit(kilocalories_per_mole))
 
 def main():
     parser = argparse.ArgumentParser()
