@@ -178,7 +178,7 @@ def run(args):
 
     print("Analysis start")
     #os.system(f"{sys.executable} protein_DNA_analysis.py {args.proteinDNA}.pdb -t {os.path.join(toPath, "output.dcd")} -a {args.AWSEM} -l {args.fragment} -o {os.path.join(toPath, "info.dat")}")
-    os.system(f"{sys.executable} protein_DNA_analysis.py {args.proteinDNA}.pdb -t {os.path.join(toPath, "output.dcd")} -f {args.forces} -o {os.path.join(toPath, "info.dat")}")
+    os.system(f"{sys.executable} protein_DNA_analysis.py {args.proteinDNA}.pdb -t {os.path.join(toPath, 'output.dcd')} -f {args.forces} -o {os.path.join(toPath, 'info.dat')}")
     print("Analysis finished")
 
 def main():
