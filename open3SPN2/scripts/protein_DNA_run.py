@@ -1,15 +1,10 @@
 import sys
 import os
 
-openAWSEM_HOME = '/home/sl206/Programs/openawsem'
-
-sys.path.insert(0,openAWSEM_HOME)
-
 #Import openAWSEM, open3SPN2 and other libraries
 import pandas as pd
 import numpy as np
 import openmm
-#import openmm
 
 from functools import partial
 
