@@ -1,10 +1,17 @@
 import openawsem
-import open3spn2
+import open3SPN2
 
 from functools import partial
 
 from openawsem.functionTerms import *
 from openawsem.helperFunctions.myFunctions import *
+
+try:
+    from openmm.unit import angstrom
+    from openmm.unit import kilocalorie_per_mole
+except ModuleNotFoundError:
+    from simtk.unit import angstrom
+    from simtk.unit import kilocalorie_per_mole
 
 #Location of the AWSEM information folder, including fragment memories
 AWSEM_folder = "/home/sl206/Calcs/NFkB_DNA_Cuts/tests/frags_lib/1le5half"
@@ -24,9 +31,9 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
         force_name="CMMotionRemover"
 
     #Add 3SPN2 forces
-    for force_name in open3spn2.forces:
+    for force_name in open3SPN2.forces:
         print(force_name)
-        force = open3spn2.forces[force_name](dna)
+        force = open3SPN2.forces[force_name](dna)
         if force_name in ['BasePair','CrossStacking']:
             force.addForce(s)
         else:
@@ -60,9 +67,9 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
     protein.setup_virtual_sites(s)
 
     #Add DNA-protein interaction forces
-    for force_name in open3spn2.protein_dna_forces:
+    for force_name in open3SPN2.protein_dna_forces:
         print(force_name)
-        force = open3spn2.protein_dna_forces[force_name](dna,protein)
+        force = open3SPN2.protein_dna_forces[force_name](dna,protein)
         s.addForce(force)
         forces.update({force_name: force})  
         
@@ -72,12 +79,12 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
         if force_name in ['contact']:
             force = openAWSEMforces[force_name](protein, withExclusion=False,periodic=False)
             print(force_name, "pre-add #Exclusions", force.getNumExclusions())
-            open3spn2.addNonBondedExclusions(dna,force)
+            open3SPN2.addNonBondedExclusions(dna,force)
             print(force_name, "post-add #Exclusions", force.getNumExclusions())
         elif force_name in ['Excl']:
             force = openAWSEMforces[force_name](protein)
             print(force_name, "pre-add #Exclusions", force.getNumExclusions())
-            open3spn2.addNonBondedExclusions(dna,force)
+            open3SPN2.addNonBondedExclusions(dna,force)
             print(force_name, "post-add #Exclusions", force.getNumExclusions())
         #continue
         else:

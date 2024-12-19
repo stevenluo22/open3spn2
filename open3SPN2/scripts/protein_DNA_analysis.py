@@ -4,7 +4,7 @@ import argparse
 import mdtraj as md
 import pandas as pd
 import openmm
-import open3spn2
+import open3SPN2
 import openawsem
 from functools import partial
 import importlib.util
@@ -32,10 +32,10 @@ def run(args):
         platform.setPropertyDefaultValue('DeviceIndex', args.device)
 
     # fix=open3SPN2.fixPDB(args.protein)
-    fix=open3spn2.fixPDB(args.proteinDNA)
+    fix=open3SPN2.fixPDB(args.proteinDNA)
 
     #Create a table containing both the proteins and the DNA
-    complex_table=open3spn2.pdb2table(fix)
+    complex_table=open3SPN2.pdb2table(fix)
 
     #Generate a coarse-grained model of the Protein molecules
     protein_atoms=openawsem.Protein.CoarseGrain(complex_table)
@@ -48,7 +48,7 @@ def run(args):
     s=forcefield.createSystem(top)
 
     #Create the DNA and Protein Objects
-    dna=open3spn2.DNA.fromCoarsePDB(args.proteinDNA)
+    dna=open3SPN2.DNA.fromCoarsePDB(args.proteinDNA)
     with open('protein.seq') as ps:
         protein_seq=ps.readlines()[0]
     protein=openawsem.Protein.fromCoarsePDB(args.proteinDNA,
