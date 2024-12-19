@@ -28,7 +28,7 @@ import openmm
 from functools import partial
 import sys
 
-import open3SPN2
+import open3spn2
 import openawsem
 
 import openmm.app
@@ -99,7 +99,7 @@ def run(args):
     s=forcefield.createSystem(top)
 
     #Create the DNA and Protein Objects
-    dna=open3SPN2.DNA.fromCoarsePDB(f'{proteinDNA}.pdb')
+    dna=open3spn2.DNA.fromCoarsePDB(f'{proteinDNA}.pdb')
     #dna.computeTopology(template_from_X3DNA=True)
     with open('protein.seq') as ps:
         protein_sequence_one=ps.readlines()[0]
