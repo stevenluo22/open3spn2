@@ -6,13 +6,6 @@ from functools import partial
 from openawsem.functionTerms import *
 from openawsem.helperFunctions.myFunctions import *
 
-try:
-    from openmm.unit import angstrom
-    from openmm.unit import kilocalorie_per_mole
-except ModuleNotFoundError:
-    from simtk.unit import angstrom
-    from simtk.unit import kilocalorie_per_mole
-
 #Location of the AWSEM information folder, including fragment memories
 AWSEM_folder = "/home/sl206/Calcs/NFkB_DNA_Cuts/tests/frags_lib/1le5half"
 
