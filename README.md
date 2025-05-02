@@ -21,6 +21,9 @@ For protein-DNA simulations you will also need to install [openAWSEM](https://gi
 
 Further documentation and tutorials are hosted in [readthedocs](https://open3spn2.readthedocs.io/en/latest/).
 
+## Acknowledgment
+Carlos Bueno was supported by the MolSSI Software Fellowship, under the mentorship of Jessica Nash. We thank AMD (Advanced Micro Devices, Inc.) for the donation of high-performance computing hardware and HPC resources. This project is also supported by the Center for Theoretical Biological Physics (NSF Grants PHY-2019745 and PHY-1522550), with additional support from the D.R. Bullard Welch Chair at Rice University (Grant No. C-0016 to PGW).
+
 ## Citations
 
 If you publish any work using the open3SPN2 package, please include the following references:
