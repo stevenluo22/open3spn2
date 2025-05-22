@@ -189,7 +189,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
 .. code:: ipython3
 
-    #Merge the models
+    #Merge the protein and DNA models
     Coarse=pandas.concat([protein_atoms,dna_atoms],sort=False)
     Coarse.index=range(len(Coarse))
     Coarse['serial']=list(Coarse.index)
