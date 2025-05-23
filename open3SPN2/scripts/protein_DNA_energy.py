@@ -40,6 +40,7 @@ def printEnergy(simulation, forces):
     energy_unit=openmm.unit.kilocalorie_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
+    print('Caution! The energy terms with identical energy values are in the same forceGroup!')
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
 
     # #Detailed energy
@@ -65,6 +66,7 @@ def writeEnergy(simulation, forces, output):
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
     with open(output, 'a') as f:
+        f.write('Caution! The energy terms with identical energy values are in the same forceGroup!')
         f.write(f'TotalEnergy {round(energy,6)} {energy_unit.get_symbol()}')
         f.write('\n')
 
@@ -90,6 +92,14 @@ def savePDB(toPath, simulation, PDBfile_name):
 def run(args):
     proteinDNA = args.proteinDNA
 
+    pwd = os.getcwd()
+    toPath = os.path.abspath(args.to)
+    forceSetupFile = args.forces
+
+    if args.to != "./":
+        # os.system(f"mkdir -p {args.to}")
+        os.makedirs(toPath, exist_ok=True)
+        os.system(f"cp {forceSetupFile} {toPath}/{forceSetupFile}")
 
     #Create the merged system
     pdb=openmm.app.PDBFile(f'{proteinDNA}.pdb')
@@ -111,7 +121,6 @@ def run(args):
 
     print(s.getForces())
 
-    forceSetupFile = args.forces
     #forces={}
 
     print(f"using force setup file from {forceSetupFile}")
@@ -125,7 +134,7 @@ def run(args):
 
     temperature=args.tempStart * openmm.unit.kelvin
     Tstart = args.tempStart
-    output = args.output
+    output = f"{toPath}/{args.output}"
     platform_name=args.Platform #'Reference','CPU','CUDA', 'OpenCL'
 
     integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond, 2 * openmm.unit.femtoseconds)
@@ -141,7 +150,6 @@ def run(args):
 
     #reporter_frequency = 1000
     #append = False
-    toPath = "."
     #print("reporter_frequency", reporter_frequency)
     #pdb_reporter=openmm.app.PDBReporter(os.path.join(toPath, "movie.pdb"), reporter_frequency)
     #dcd_reporter=openmm.app.DCDReporter(os.path.join(toPath, "output.dcd"), reporter_frequency, append=False)
@@ -206,6 +214,7 @@ def main():
         run simulations")
 
     parser.add_argument("proteinDNA", help="The name of the proteinDNA system")
+    parser.add_argument("--to", default="./", help="location of minimization output file")
     parser.add_argument("--tempStart", type=float, default=300, help="Starting temperature")
     #parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
     #parser.add_argument("-a", "--AWSEM", type=str, default="./", help="protein-only AWSEM folder, should have fragment library") #not temporary

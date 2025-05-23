@@ -7,13 +7,13 @@ from openawsem.functionTerms import *
 from openawsem.helperFunctions.myFunctions import *
 
 #Location of the AWSEM information folder, including fragment memories
-AWSEM_folder = "/home/sl206/Calcs/NFkB_DNA_Cuts/tests/frags_lib/1le5half"
+AWSEM_folder = "/path/to/awsem/directory/for/protein/part"
 
 #File of fragment memory to be used
-fragment = "single_frags.mem"
+fragment = f"single_frags.mem"
 
 #Native (or other reference) file
-reference = "1le5half.pdb"
+reference = f"{AWSEM_folder}/crystal_structure-openmmawsem.pdb"
 
 def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fragment):
     # apply forces
@@ -41,11 +41,14 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
                         Excl=openawsem.functionTerms.basicTerms.excl_term,
                         rama=openawsem.functionTerms.basicTerms.rama_term,
                         rama_pro=openawsem.functionTerms.basicTerms.rama_proline_term,
+                        rama_ssweight = partial(openawsem.functionTerms.basicTerms.rama_ssweight_term,
+                                        k_rama_ssweight=2*8.368,
+                                        ssweight_file=f"{frags_dir}/ssweight"),
                         contact=openawsem.functionTerms.contactTerms.contact_term,
                         frag  = partial(openawsem.functionTerms.templateTerms.fragment_memory_term, 
                                         frag_file_list_file=f"{frags_dir}/{fragment}", 
                                         UseSavedFragTable=False, 
-                                        k_fm=0.04184/3),
+                                        k_fm=0.04184),
                         beta1 = openawsem.functionTerms.hydrogenBondTerms.beta_term_1,
                         beta2 = openawsem.functionTerms.hydrogenBondTerms.beta_term_2,
                         beta3 = openawsem.functionTerms.hydrogenBondTerms.beta_term_3,

@@ -25,6 +25,7 @@ def printEnergy(simulation, forces):
     energy_unit=openmm.unit.kilocalorie_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
+    print('Caution! The energy terms with identical energy values are in the same forceGroup!')
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
 
     # #Detailed energy
@@ -58,10 +59,12 @@ def run(args):
     
     pwd = os.getcwd()
     toPath = os.path.abspath(args.to)
+    forceSetupFile = args.forces
 
     if args.to != "./":
         # os.system(f"mkdir -p {args.to}")
         os.makedirs(toPath, exist_ok=True)
+        os.system(f"cp {forceSetupFile} {toPath}/{forceSetupFile}")
 
     checkPointPath = None if args.fromCheckPoint is None else os.path.abspath(args.fromCheckPoint)
     
@@ -84,7 +87,6 @@ def run(args):
     #Don't activate this below. Appears not to apply if you have Protein.
     #s=open3SPN2.System(dna, periodicBox=None) 
 
-    forceSetupFile = args.forces
     #forces={}
 
     print(f"using force setup file from {forceSetupFile}")
@@ -193,7 +195,7 @@ def main():
     #parser.add_argument("-c", "--chain", type=str, default="-1")
     parser.add_argument("-t", "--thread", type=int, default=-1, help="default is using all that is available")
     parser.add_argument("-p", "--platform", type=str, default="OpenCL")
-    parser.add_argument("-s", "--steps", type=float, default=10000, help="step size, default 10000")
+    parser.add_argument("-s", "--steps", type=float, default=10000000, help="step size, default 10,000,000")
     parser.add_argument("--tempStart", type=float, default=300, help="Starting temperature")
     parser.add_argument("--tempEnd", type=float, default=300, help="Ending temperature")
     parser.add_argument("--fromCheckPoint", type=str, default=None, help="The checkpoint file you want to start from")
