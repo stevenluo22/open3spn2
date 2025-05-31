@@ -195,7 +195,7 @@ def main():
     #parser.add_argument("-c", "--chain", type=str, default="-1")
     parser.add_argument("-t", "--thread", type=int, default=-1, help="default is using all that is available")
     parser.add_argument("-p", "--platform", type=str, default="OpenCL")
-    parser.add_argument("-s", "--steps", type=float, default=10000000, help="step size, default 10,000,000")
+    parser.add_argument("-s", "--steps", type=int, default=10000000, help="step size, default 10,000,000")
     parser.add_argument("--tempStart", type=float, default=300, help="Starting temperature")
     parser.add_argument("--tempEnd", type=float, default=300, help="Ending temperature")
     parser.add_argument("--fromCheckPoint", type=str, default=None, help="The checkpoint file you want to start from")
@@ -211,7 +211,7 @@ def main():
     #parser.add_argument("--fasta", type=str, default="crystal_structure.fasta")
     parser.add_argument("--timeStep", type=int, default=2)
     #parser.add_argument("--includeLigands", action="store_true", default=False)
-    parser.add_argument('--Frames', default=400, help="Number of frames")
+    parser.add_argument('--Frames', type=int, default=400, help="Number of frames")
     parser.add_argument('--device',default='0')
     parser.add_argument("-f", "--forces", default="forces_setup.py", type=str, help="forces setup file")
     #parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
