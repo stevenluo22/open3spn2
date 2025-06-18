@@ -549,6 +549,7 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
 
 class constrainByPosition(DNAForce, openmm.CustomExternalForce):
+    #In the process of implementation
     def __init__(self, dna, forceGroup=3, k=1*unit.kilocalories_per_mole,
                  x0=10, y0=10, z0=10, appliedToResidues=-1):
         """
@@ -582,4 +583,4 @@ class constrainByPosition(DNAForce, openmm.CustomExternalForce):
             self.addParticle(idx, [k_val, x0, y0, z0])
         
     def defineConstraint(self):
-        
+        pass
