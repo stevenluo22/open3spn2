@@ -547,3 +547,39 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
 
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
+
+class constrainByPosition(DNAForce, openmm.CustomExternalForce):
+    def __init__(self, dna, forceGroup=3, k=1*unit.kilocalories_per_mole,
+                 x0=10, y0=10, z0=10, appliedToResidues=-1):
+        """
+        Apply a harmonic restraint on specified DNA atoms to keep them near (x0, y0, z0).
+        
+        Parameters:
+        - dna: an object containing DNA atoms, with at least a .atoms DataFrame
+        - forceGroup: te force group to assign
+        - k: force constant (energy per distance squared)
+        - x0, y0, z0: coordinates of the restraint center
+        - appliedToResidues: -1 means apply to all residues; otherwise, provide a list of residue IDs
+        """
+        expression = "0.5 * k * ((x - x0)^2 + (y - y0)^2 + (z - z0)^2)"
+        super().__init__(expression)
+        self.addPerParticleParameter("k")
+        self.addPerParticleParameter("x0")
+        self.addPerParticleParameter("y0")
+        self.addPerParticleParameter("z0")
+
+        self.setForceGroup(forceGroup)
+
+        # Convert k to correct units
+        k_val = k.value_in_unit(unit.kilojoule_per_mole / unit.nanometer**2)
+
+        atoms = dna.atoms.copy()
+        if appliedToResidues != -1:
+            atoms = atoms[atoms["resid"].isin(appliedToResidues)]
+
+        for _, atom in atoms.iterrows():
+            idx = int(atom["index"])
+            self.addParticle(idx, [k_val, x0, y0, z0])
+        
+    def defineConstraint(self):
+        
