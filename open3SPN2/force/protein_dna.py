@@ -264,6 +264,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 #            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 
+'''  Steven Luo ordering that Xinyu's protein-DNA version be deprecated but retained.
 class StringProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential (Xinyu)"""
     def __init__(self, dna, protein, r0, chain_protein='A', chain_DNA='B', k_string_PD=10*4.184, protein_seg=False, group=[]):
@@ -296,22 +297,25 @@ class StringProteinDNA(ProteinDNAForce):
         print(self.force.getGroupParameters(1))
 
         self.force.addBond(bondGroups)
+'''
 
 class MultiChainProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential for multiple chains (added and amended by Steven and ChatGPT from Xinyu)"""
-    def __init__(self, dna, protein, r0, chain_protein='AB', chain_DNA='CD', k_string_PD=10*4.184, protein_seg=False, group=[]):
+    def __init__(self, dna, protein, r0, chain_protein='AB', chain_DNA='CD', k_string_PD=10*4.184, protein_seg=False, group=[], force_group=19): #forceGroup placeholder is 19.
         self.k_string_PD = k_string_PD
         self.chain_protein = chain_protein
         self.chain_DNA = chain_DNA
         self.r0 = r0
         self.protein_seg = protein_seg
         self.group = group
+        self.force_group = force_group
         super().__init__(dna, protein)
 
     def reset(self):
         r0=self.r0
         k_string_PD=self.k_string_PD
         stringForce = openmm.CustomCentroidBondForce(2, f"0.5*{k_string_PD}*(distance(g1,g2)-{r0})^2")
+        stringForce.setForceGroup(self.force_group)
         self.force = stringForce
         print("String_PD bias on: r0, k_string = ", r0, k_string_PD)
 
@@ -375,3 +379,49 @@ class String_length_ProteinDNA(ProteinDNAForce):
         print(self.force.getGroupParameters(1))
 
         self.force.addBond(bondGroups)
+
+class Multi_length_ProteinDNA(ProteinDNAForce):
+    """ Protein-DNA string length for multiple chains (added and amended by Steven and ChatGPT from Xinyu)"""
+    def __init__(self, dna, protein, chain_protein='AB', chain_DNA='CD', protein_seg=False, group=[], force_group=4): #force group placeholder is 4
+        self.force_group = force_group
+        self.chain_protein = chain_protein
+        self.chain_DNA = chain_DNA
+        self.protein_seg = protein_seg
+        self.group = group
+        super().__init__(dna, protein)
+
+    def reset(self):
+        length = openmm.CustomCentroidBondForce(2, "distance(g1,g2)")
+        length.setForceGroup(self.force_group)
+        self.force = length
+
+    def defineInteraction(self):
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+
+        CA_atoms = atoms[
+            atoms['chainID'].isin(list(self.chain_protein)) &
+            (atoms['name'] == 'CA') &
+            atoms['resname'].isin(_proteinResidues)
+        ].copy()
+
+        S_atoms = atoms[
+            atoms['chainID'].isin(list(self.chain_DNA)) &
+            (atoms['name'] == 'S') &
+            atoms['resname'].isin(_dnaResidues)
+        ].copy()
+
+        if CA_atoms.empty or S_atoms.empty:
+            raise ValueError("No CA or S atoms found in the specified chains.")
+
+        CA_index = [int(atom.index) for atom in CA_atoms.itertuples()]
+        if self.protein_seg:
+            self.force.addGroup([CA_index[x] for x in self.group])
+        else:
+            self.force.addGroup(CA_index)
+
+        self.force.addGroup([int(atom.index) for atom in S_atoms.itertuples()])
+        self.force.addBond([0, 1])
+
+        print("Protein group:", self.force.getGroupParameters(0))
+        print("DNA group:", self.force.getGroupParameters(1))
