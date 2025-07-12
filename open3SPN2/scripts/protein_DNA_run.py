@@ -74,7 +74,7 @@ def run(args):
     top=pdb.topology
     coord=pdb.positions
     forcefield=openmm.app.ForceField(openawsem.xml,open3SPN2.xml)
-    s=forcefield.createSystem(top, removeCMMotion=args.removeCMMotionRemover)
+    s=forcefield.createSystem(top, removeCMMotion=not args.removeCMMotionRemover)
 
     #Create the DNA and Protein Objects
     dna=open3SPN2.DNA.fromCoarsePDB(f'{proteinDNA}.pdb')
