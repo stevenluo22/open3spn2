@@ -74,7 +74,7 @@ def run(args):
     top=pdb.topology
     coord=pdb.positions
     forcefield=openmm.app.ForceField(openawsem.xml,open3SPN2.xml)
-    s=forcefield.createSystem(top)
+    s=forcefield.createSystem(top, removeCMMotion=args.removeCMMotionRemover)
 
     #Create the DNA and Protein Objects
     dna=open3SPN2.DNA.fromCoarsePDB(f'{proteinDNA}.pdb')
@@ -214,6 +214,7 @@ def main():
     parser.add_argument('--Frames', type=int, default=400, help="Number of frames")
     parser.add_argument('--device',default='0')
     parser.add_argument("-f", "--forces", default="forces_setup.py", type=str, help="forces setup file")
+    parser.add_argument('--removeCMMotionRemover', action="store_true", default=False, help='Removes CMMotionRemover. Recommended for periodic boundary conditions and membrane simulations')
     #parser.add_argument("-l", "--fragment", type=str, default="./frags.mem", help="Fragment memory (single or std)")  #temporary placeholder
     #parser.add_argument("-a", "--AWSEM", type=str, default="./", help="protein-only AWSEM folder, should have fragment library") #not temporary
     args = parser.parse_args()
