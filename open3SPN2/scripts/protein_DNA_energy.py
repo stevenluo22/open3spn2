@@ -66,7 +66,7 @@ def writeEnergy(simulation, forces, output):
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
     with open(output, 'a') as f:
-        f.write('Caution! The energy terms with identical energy values are in the same forceGroup!')
+        f.write('Caution! The energy terms with identical energy values are in the same forceGroup! \n')
         f.write(f'TotalEnergy {round(energy,6)} {energy_unit.get_symbol()}')
         f.write('\n')
 
