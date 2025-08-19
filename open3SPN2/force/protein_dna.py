@@ -100,7 +100,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 
         ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
-        denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
+        denominator = denominator.in_units_of(unit.kilojoule_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
         electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
@@ -175,7 +175,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
     def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
         self.force_group = force_group
-        self.k_amhgo_PD = k_amhgo_PD
+        self.k_amhgo_PD = k_amhgo_PD   #Steven Luo: Adding a note, you may want to add .in_units_of(unit.kilojoules_per_mole)
         self.sigma_sq= sigma_sq
         self.chain_protein = chain_protein
         self.chain_DNA = chain_DNA
