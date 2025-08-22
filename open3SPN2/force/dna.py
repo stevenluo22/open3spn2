@@ -487,10 +487,11 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
+    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, ldby = None, OpenCLPatch=True):
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
+        self.ldby = ldby
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
@@ -506,11 +507,15 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        if self.ldby is None:
+            ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        else:
+            ldby = self.ldby
+        
         ldby = ldby.in_units_of(unit.nanometer)
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
-        #print(ldby, denominator)
+        print(ldby, denominator)
 
         electrostaticForce = openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")

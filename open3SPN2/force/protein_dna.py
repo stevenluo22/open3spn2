@@ -85,9 +85,10 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, force_group=15):
+    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, force_group=15):
         self.k = k
         self.force_group = force_group
+        self.ldby = ldby
         super().__init__(dna, protein)
 
     def reset(self):
@@ -98,11 +99,12 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        #ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
+        ldby = self.ldby
         electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
                              energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
