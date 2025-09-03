@@ -54,7 +54,8 @@ def run(args):
     protein=openawsem.Protein.fromCoarsePDB(args.proteinDNA,
                                         sequence=protein_seq)
     dna.periodic=False
-    protein.periodic=False
+    protein.periodic_box=False
+    protein.fixed_residue_indices=[]
 
     #Initialize the force dictionary
     forceSetupFile = args.forces

@@ -83,7 +83,8 @@ def run(args):
         protein_sequence_one=ps.readlines()[0]
     protein=openawsem.Protein.fromCoarsePDB(f'{proteinDNA}.pdb',sequence=protein_sequence_one)
     dna.periodic=False
-    protein.periodic=False
+    protein.periodic_box=False
+    protein.fixed_residue_indices=[]
     #Don't activate this below. Appears not to apply if you have Protein.
     #s=open3SPN2.System(dna, periodicBox=None) 
 
