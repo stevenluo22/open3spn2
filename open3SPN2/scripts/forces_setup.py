@@ -6,6 +6,8 @@ from functools import partial
 from openawsem.functionTerms import *
 from openawsem.helperFunctions.myFunctions import *
 
+import os
+
 #Location of the AWSEM information folder, including fragment memories
 AWSEM_folder = "/path/to/awsem/directory/for/protein/part"
 
@@ -49,13 +51,16 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
                                         frag_file_list_file=f"{frags_dir}/{fragment}", 
                                         UseSavedFragTable=False, 
                                         k_fm=0.04184),
-                        beta1 = openawsem.functionTerms.hydrogenBondTerms.beta_term_1,
-                        beta2 = openawsem.functionTerms.hydrogenBondTerms.beta_term_2,
-                        beta3 = openawsem.functionTerms.hydrogenBondTerms.beta_term_3,
+                        beta1 = partial(openawsem.functionTerms.hydrogenBondTerms.beta_term_1,
+                                        ssweight_file=f"{frags_dir}/ssweight"),
+                        beta2 = partial(openawsem.functionTerms.hydrogenBondTerms.beta_term_2,
+                                        ssweight_file=f"{frags_dir}/ssweight"),
+                        beta3 = partial(openawsem.functionTerms.hydrogenBondTerms.beta_term_3,
+                                        ssweight_file=f"{frags_dir}/ssweight"),
                         pap1 = partial(openawsem.functionTerms.hydrogenBondTerms.pap_term_1,
-                                        ssweightFileName=f"{frags_dir}/ssweight"),
+                                        ssweight_file=f"{frags_dir}/ssweight"),
                         pap2 = partial(openawsem.functionTerms.hydrogenBondTerms.pap_term_2,
-                                        ssweightFileName=f"{frags_dir}/ssweight"),
+                                        ssweight_file=f"{frags_dir}/ssweight"),
                         DH = partial(openawsem.functionTerms.debyeHuckelTerms.debye_huckel_term, 
                                         chargeFile=f"{frags_dir}/charge.txt")
                         )
@@ -73,7 +78,7 @@ def set_up_forces(s,protein, dna, computeQ, AWSEM = AWSEM_folder, fragment = fra
     for force_name in openAWSEMforces:
         print(force_name)
         if force_name in ['contact']:
-            force = openAWSEMforces[force_name](protein, withExclusion=False,periodic=False)
+            force = openAWSEMforces[force_name](protein, withExclusion=False)
             print(force_name, "pre-add #Exclusions", force.getNumExclusions())
             open3SPN2.addNonBondedExclusions(dna,force)
             print(force_name, "post-add #Exclusions", force.getNumExclusions())
