@@ -85,10 +85,11 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, force_group=15):
+    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, cutoff_distance = None, force_group=15):
         self.k = k
         self.force_group = force_group
         self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         super().__init__(dna, protein)
 
     def reset(self):
@@ -112,7 +113,16 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
         electrostaticForce.addGlobalParameter('inter_denominator', denominator)
 
-        electrostaticForce.setCutoffDistance(4)
+        if self.cutoff_distance == None:
+            cutoff_distance = ldby * 4
+        else:
+            cutoff_distance = self.cutoff_distance
+
+        cutoff_nm = cutoff_distance.value_in_unit(unit.nanometer)
+
+        electrostaticForce.setCutoffDistance(cutoff_nm)
+        print(f"protein dna screening length {ldby} nm")
+        print(f"protein dna cutoff {electrostaticForce.getCutoffDistance()} nm")
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
