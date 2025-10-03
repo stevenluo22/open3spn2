@@ -182,6 +182,27 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
+    """ Protein-DNA string potential"""
+    #k_ebias and center should be inputted
+    def __init__(self, dna, protein, k_ebias,center):
+        self.k_ebias = k_ebias
+        self.center = center
+        super().__init__(dna, protein)
+
+    def reset(self):
+        k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
+        center=self.center.value_in_unit(unit.kilojoule_per_mole)
+        ebiasForce = simtk.openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
+        #ebiasForce = simtk.openmm.CustomCVForce(f"(E_elec-{center})*(E_elec-{center})")
+        elec = ElectrostaticsProteinDNA(self.dna, self.protein)
+        E_elec = elec.force
+        ebiasForce.addCollectiveVariable("E_elec", E_elec)
+        print (E_elec)
+        self.force = ebiasForce
+
+    def defineInteraction(self):
+        print("ElectrostaticsProteinDNA bias on: center, k_ebias = ", self.center, self.k_ebias)
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
