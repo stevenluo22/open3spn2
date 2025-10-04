@@ -185,9 +185,11 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential"""
     #k_ebias and center should be inputted
-    def __init__(self, dna, protein, k_ebias,center):
+    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby):
         self.k_ebias = k_ebias
         self.center = center
+        self.k_elec = k_elec
+        self.ldby = ldby
         super().__init__(dna, protein)
 
     def reset(self):
@@ -195,14 +197,14 @@ class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
         center=self.center.value_in_unit(unit.kilojoule_per_mole)
         ebiasForce = simtk.openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
         #ebiasForce = simtk.openmm.CustomCVForce(f"(E_elec-{center})*(E_elec-{center})")
-        elec = ElectrostaticsProteinDNA(self.dna, self.protein)
+        elec = ElectrostaticsProteinDNA(self.dna, self.protein, self.k_elec, self.ldby)
         E_elec = elec.force
         ebiasForce.addCollectiveVariable("E_elec", E_elec)
         print (E_elec)
         self.force = ebiasForce
 
     def defineInteraction(self):
-        print("ElectrostaticsProteinDNA bias on: center, k_ebias = ", self.center, self.k_ebias)
+        print("ElectrostaticsProteinDNA bias on: center, k_ebias = ", self.center, self.k_ebias, f"with electrostatic parameters k_elec = {self.k_elec} and screening length {self.ldby}")
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
