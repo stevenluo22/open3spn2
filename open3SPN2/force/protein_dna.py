@@ -195,7 +195,7 @@ class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
     def reset(self):
         k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
         center=self.center.value_in_unit(unit.kilojoule_per_mole)
-        ebiasForce = simtk.openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
+        ebiasForce = openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
         #ebiasForce = simtk.openmm.CustomCVForce(f"(E_elec-{center})*(E_elec-{center})")
         elec = ElectrostaticsProteinDNA(self.dna, self.protein, self.k_elec, self.ldby)
         E_elec = elec.force
