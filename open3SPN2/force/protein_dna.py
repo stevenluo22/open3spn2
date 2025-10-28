@@ -182,29 +182,37 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
-class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
+class BiasElectrostaticsProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential"""
     #k_ebias and center should be inputted
-    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby):
+    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, forceGroup=16):
         self.k_ebias = k_ebias
         self.center = center
         self.k_elec = k_elec
         self.ldby = ldby
+        self.forceGroup = forceGroup
         super().__init__(dna, protein)
 
     def reset(self):
-        k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
-        center=self.center.value_in_unit(unit.kilojoule_per_mole)
-        ebiasForce = openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
-        #ebiasForce = simtk.openmm.CustomCVForce(f"(E_elec-{center})*(E_elec-{center})")
-        elec = ElectrostaticsProteinDNA(self.dna, self.protein, self.k_elec, self.ldby)
-        E_elec = elec.force
-        ebiasForce.addCollectiveVariable("E_elec", E_elec)
-        print (E_elec)
+        #k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
+        #center=self.center.value_in_unit(unit.kilojoule_per_mole)
+        k_ebias = self.k_ebias
+        center = self.center
+        ebiasForce = openmm.CustomCVForce(f"0.5*k_ebias*((E_elec-center)/4.184)^2")
+        E_elec = ElectrostaticsProteinDNA(self.dna, self.protein, k = self.k_elec, ldby = self.ldby)
+        elec = E_elec.force
+        #ebiasForce.addCollectiveVariable("E_elec", E_elec)
+        ebiasForce.addCollectiveVariable("E_elec", elec)    #Is in kJ/mol
+        ebiasForce.addGlobalParameter("k_ebias", k_ebias)   #
+        ebiasForce.addGlobalParameter("center", center)
+        ebiasForce.setForceGroup(self.forceGroup)
+        print(f"k_ebias = {k_ebias}")
+        print(f"center = {center}")
+        #print (E_elec)
         self.force = ebiasForce
 
     def defineInteraction(self):
-        print("ElectrostaticsProteinDNA bias on: center, k_ebias = ", self.center, self.k_ebias, f"with electrostatic parameters k_elec = {self.k_elec} and screening length {self.ldby}")
+        print(f"ElectrostaticsProteinDNA bias on: center at {self.center}, k_ebias = {self.k_ebias}, with electrostatic parameters k_elec = {self.k_elec} and screening length {self.ldby}")
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
