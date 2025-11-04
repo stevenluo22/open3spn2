@@ -11,9 +11,10 @@ _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, force_group=14):
+    def __init__(self, dna, protein, k=1, cutoff = 1.55, force_group=14):
         self.k = k
         self.force_group = force_group
+        self.cutoff = cutoff    #cutoff is in nm
         super().__init__(dna, protein)
 
     def reset(self):
@@ -27,7 +28,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
-        exclusionForce.setCutoffDistance(1.55)
+        exclusionForce.setCutoffDistance(self.cutoff)
         # exclusionForce.setUseLongRangeCorrection(True)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
