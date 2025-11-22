@@ -186,7 +186,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 class BiasElectrostaticsProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential"""
     #k_ebias and center should be inputted
-    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, , cutoff_distance = None, forceGroup=16):
+    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, cutoff_distance = None, forceGroup=16):
         self.k_ebias = k_ebias
         self.center = center
         self.k_elec = k_elec
