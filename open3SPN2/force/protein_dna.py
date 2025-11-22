@@ -185,11 +185,12 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 class BiasElectrostaticsProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential"""
     #k_ebias and center should be inputted
-    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, forceGroup=16):
+    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, cutoff_distance = None, forceGroup=16):
         self.k_ebias = k_ebias
         self.center = center
         self.k_elec = k_elec
         self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         self.forceGroup = forceGroup
         super().__init__(dna, protein)
 
@@ -199,7 +200,7 @@ class BiasElectrostaticsProteinDNA(ProteinDNAForce):
         k_ebias = self.k_ebias
         center = self.center
         ebiasForce = openmm.CustomCVForce(f"0.5*k_ebias*((E_elec-center)/4.184)^2")
-        E_elec = ElectrostaticsProteinDNA(self.dna, self.protein, k = self.k_elec, ldby = self.ldby)
+        E_elec = ElectrostaticsProteinDNA(self.dna, self.protein, k = self.k_elec, ldby = self.ldby, cutoff_distance = self.cutoff_distance)
         elec = E_elec.force
         #ebiasForce.addCollectiveVariable("E_elec", E_elec)
         ebiasForce.addCollectiveVariable("E_elec", elec)    #Is in kJ/mol
