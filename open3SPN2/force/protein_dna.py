@@ -11,9 +11,10 @@ _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, cutoff = 1.55, force_group=14):
+    def __init__(self, dna, protein, k=1, radius_override = None, cutoff = 1.55, force_group=14):
         self.k = k
         self.force_group = force_group
+        self.radius_override = radius_override
         self.cutoff = cutoff    #cutoff is in nm
         super().__init__(dna, protein)
 
@@ -35,6 +36,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
+        print(f"protein dna cutoff {exclusionForce.getCutoffDistance()}")
         self.force = exclusionForce
 
     def defineInteraction(self):
@@ -62,16 +64,28 @@ class ExclusionProteinDNA(ProteinDNAForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 DNA_list += [i]
+                #print(i,parameters)
             elif atom.is_protein:
                 param = particle_definition.loc['Protein' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 protein_list += [i]
+                #print(i,parameters)
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
                 parameters = [0, .1,.1]
