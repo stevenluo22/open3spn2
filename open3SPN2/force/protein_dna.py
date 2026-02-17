@@ -230,6 +230,151 @@ class BiasElectrostaticsProteinDNA(ProteinDNAForce):
     def defineInteraction(self):
         print(f"ElectrostaticsProteinDNA bias on: center at {self.center}, k_ebias = {self.k_ebias}, with electrostatic parameters k_elec = {self.k_elec} and screening length {self.ldby}")
 
+class proteinBasePairBias(ProteinDNAForce):
+    """constrains protein to a particular base pair and its neighbors"""
+    def __init__(self, dna, protein, indices, forceGroup=16):
+        self.forceGroup = forceGroup
+        assert len(indices)==12, indices # you can change this if you want, but be sure to also change the CustomCompoundBondForce instantiation below
+        self.indices = indices
+        super().__init__(dna,protein)
+    def reset(self):
+        E1 = "(4.184*(2*5*(tanh(30*((x)-(0.6)))+tanh(30*(-(x)-(0.6))))+2*10))" # shifted so that minimum is y=0
+        # negative arguments don't make sense because we only want these to activate
+        # when the component of the (protein-bp1) vector along the (bp2-bp1) vector is positive,
+        # so we multiply by the openmm step() function, which is 1 when x>=0 and 0 otherwise.
+        E1_positive = f'step(x)*{E1}'
+        ####################################################################################################################################
+        energy = f'{E1_positive.replace("x","comp_ip1")}+{E1_positive.replace("x","comp_im1")}'
+        ########################################################################################################################################
+        # define switching function that turns on (quickly goes from 0 to 1) when input is between 0 and infinity
+        # define components based on dot product
+        # p1, p2: phosphates on i-2
+        # p3, p4: phosphates on i-1
+        # p5, p6: phosphates on i
+        # p7, p8: phosphates on i+1
+        # p9, p10: phosphates on i+2
+        # p11, p12: DD residues on opposites sides of interface
+        comp_definitions=';comp_ip1=pointdistance(bx,by,bz,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bx,by,bz,bp1x,bp1y,bp1z))/pointdistance(bx,by,bz,bp1x,bp1y,bp1z)\
+;comp_im1=pointdistance(bx,by,bz,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bx,by,bz,bm1x,bm1y,bm1z))/pointdistance(bx,by,bz,bm1x,bm1y,bm1z)\
+;comp_ip2=pointdistance(bp1x,bp1y,bp1z,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bp1x,bp1y,bp1z,bp2x,bp2y,bp2z))/pointdistance(bp1x,bp1y,bp1z,bp2x,bp2y,bp2z)\
+;comp_im2=pointdistance(bm1x,bm1y,bm1z,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bm1x,bm1y,bm1z,bm2x,bm2y,bm2z))/pointdistance(bm1x,bm1y,bm1z,bm2x,bm2y,bm2z)'
+        avg_definitions = ';bm2x=(x1+x2)/2;bm2y=(y1+y2)/2;bm2z=(z1+z2)/2;bm1x=(x3+x4)/2;bm1y=(y3+y4)/2;bm1z=(z3+z4)/2;bx=(x5+x6)/2;by=(y5+y6)/2;bz=(z5+z6)/2;bp1x=(x7+x8)/2;bp1y=(y7+y8)/2;bp1z=(z7+z8)/2;bp2x=(x9+x10)/2;bp2y=(y9+y10)/2;bp2z=(z9+z10)/2;proteinx=(x11+x12)/2;proteiny=(y11+y12)/2;proteinz=(z11+z12)/2'
+        print(f"{energy}{comp_definitions}{avg_definitions}")
+        force = openmm.CustomCompoundBondForce(12,f'{energy}{comp_definitions}{avg_definitions}')
+        force.addBond(self.indices)
+        #force.setUsesPeriodicBoundaryConditions(True)
+        force.setForceGroup(self.forceGroup)
+        self.force = force
+         
+    def defineInteraction(self):
+        pass
+
+class proteinBasePairHarmonicBias(ProteinDNAForce):
+    def __init__(self, dna, protein, indices, k=4.184,  forceGroup=16):
+        assert len(indices)==6 # you can change this if you want, but be sure to also change the CustomCompoundBondForce instantiation below
+        self.k = k
+        self.indices = indices
+        self.forceGroup = forceGroup
+        super().__init__(dna,protein)
+    def reset(self):
+        #Particles 1 and 2 are two phosphates of base pairs i-2
+        #Particles 3 and 4 are two phosphates of base pairs i+2
+        #Particles 5 and 6 are two selected protein particles
+
+        # Harmonic parameters
+        k = self.k      # kJ/mol (adjust as needed)
+        #k = self.k * 0.34 ** 2      # kJ/mol (adjust as needed)  (if need to adjust to kJ/(bp^2*mol))
+
+        #Define the harmonic bias
+        energy = f"0.5*{k}*(i)^2;"    # i is deviation base pair from target; be careful when processing for WHAM
+
+        #Converting ratio to base pair
+        ratio_bp = "i=4*(ratio-0.5)-2;"    #4 coefficient corresponds to base pairs i-2; i+2 where i is target base pair; midpoint type approximation 
+
+        #Calculate ratio of dot products
+        ratio_dots = "ratio=VAVDdots/VDVDdots;VAVDdots=VAx*VDx+VAy*VDy+VAz*VDz;VDVDdots=VDx*VDx+VDy*VDy+VDz*VDz;"
+
+        '''
+        # ChatGPT suggested simplification with cancellation out and removal of sqrt function; left as commented out as placeholder code
+
+        #Trigonometry
+        trig = "ratio=lengthVA*theta/lengthVD;"    #theta is a dot product ratio; arccos(theta) is the angle between VA and VD (not angle)
+
+        #Angle Definitions
+        angles = "theta=dot/(lengthVA*lengthVD);dot=VAx*VDx+VAy*VDy+VAz*VDz;lengthVA=sqrt(VAx^2+VAy^2+VAz^2);lengthVD=sqrt(VDx^2+VDy^2+VDz^2);"
+        
+        #If restoring this block of code; update expression initialization
+        '''
+
+        #Vector definitions
+        vectors = "VAx=Px-BPLx;VAy=Py-BPLy;VAz=Pz-BPLz;VDx=BPRx-BPLx;VDy=BPRy-BPLy;VDz=BPRz-BPLz;"
+        
+        #Particle definitions
+        particles= "BPLx=(x1+x2)/2;BPLy=(y1+y2)/2;BPLz=(z1+z2)/2;BPRx=(x3+x4)/2;BPRy=(y3+y4)/2;BPRz=(z3+z4)/2;Px=(x5+x6)/2;Py=(y5+y6)/2;Pz=(z5+z6)/2"
+
+        expression = f"{energy}{ratio_bp}{ratio_dots}{vectors}{particles}"
+
+        #print(expression)
+
+        force = openmm.CustomCompoundBondForce(6, expression)
+        force.addBond(self.indices)
+        force.setForceGroup(self.forceGroup)
+
+        self.force = force
+    def defineInteraction(self):
+        pass
+
+class proteinBasePairPosition(ProteinDNAForce):
+    def __init__(self, dna, protein, indices, forceGroup=3):
+        assert len(indices)==6 # you can change this if you want, but be sure to also change the CustomCompoundBondForce instantiation below
+        self.indices = indices
+        self.forceGroup = forceGroup
+        super().__init__(dna,protein)
+    def reset(self):
+        #Particles 1 and 2 are two phosphates of base pairs i-2
+        #Particles 3 and 4 are two phosphates of base pairs i+2
+        #Particles 5 and 6 are two selected protein particles
+
+        #Define the harmonic bias
+        energy = f"i;"  #Not really an energy but a measurement; this i is a deviation from the target base pair; be careful when processing for WHAM
+
+        #Converting ratio to base pair
+        ratio_bp = "i=4*(ratio-0.5)-2;"    #4 coefficient corresponds to base pairs i-2; i+2 where i is target base pair; midpoint type approximation 
+
+        #Calculate ratio of dot products
+        ratio_dots = "ratio=VAVDdots/VDVDdots;VAVDdots=VAx*VDx+VAy*VDy+VAz*VDz;VDVDdots=VDx*VDx+VDy*VDy+VDz*VDz;"
+
+        '''
+        # ChatGPT suggested simplification with cancellation out and removal of sqrt function; left as commented out as placeholder code
+
+        #Trigonometry
+        trig = "ratio=lengthVA*theta/lengthVD;"    #theta is a dot product ratio; arccos(theta) is the angle between VA and VD (not angle)
+
+        #Angle Definitions
+        angles = "theta=dot/(lengthVA*lengthVD);dot=VAx*VDx+VAy*VDy+VAz*VDz;lengthVA=sqrt(VAx^2+VAy^2+VAz^2);lengthVD=sqrt(VDx^2+VDy^2+VDz^2);"
+        
+        #If restoring this block of code; update expression initialization
+        '''
+
+        #Vector definitions
+        vectors = "VAx=Px-BPLx;VAy=Py-BPLy;VAz=Pz-BPLz;VDx=BPRx-BPLx;VDy=BPRy-BPLy;VDz=BPRz-BPLz;"
+        
+        #Particle definitions
+        particles= "BPLx=(x1+x2)/2;BPLy=(y1+y2)/2;BPLz=(z1+z2)/2;BPRx=(x3+x4)/2;BPRy=(y3+y4)/2;BPRz=(z3+z4)/2;Px=(x5+x6)/2;Py=(y5+y6)/2;Pz=(z5+z6)/2"
+
+        expression = f"{energy}{ratio_bp}{ratio_dots}{vectors}{particles}"
+        #expression = f"z6"
+
+        #print(expression)
+
+        force = openmm.CustomCompoundBondForce(6, expression)
+        force.addBond(self.indices)
+        force.setForceGroup(self.forceGroup)
+
+        self.force = force
+    def defineInteraction(self):
+        pass
+
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
     def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
