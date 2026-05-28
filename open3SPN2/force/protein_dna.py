@@ -129,7 +129,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         electrostaticForce.addGlobalParameter('inter_denominator', denominator)
 
         if self.cutoff_distance == None:
-            cutoff_distance = ldby * 4
+            cutoff_distance = 4 #should retain former value, not ldby * 4
         else:
             cutoff_distance = self.cutoff_distance
 
