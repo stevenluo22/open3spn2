@@ -1,21 +1,23 @@
 """Tests for the numpy energies of the DNA force classes.
 
 Every force class can score its own interactions in numpy, from the same parameters it gives OpenMM. Its
-``table`` is a DataFrame with one row per interaction (particle indices and parameters, read from the OpenMM
-force); ``open3SPN2.force.backend.<kind>_energy(table, coordinates)`` returns the energy of each row, and
+``parameter_table`` is a DataFrame with one row per interaction (particle indices and parameters, read from the
+OpenMM force, without the pairs that the masks of a nonbonded force set to zero);
+``open3SPN2.force.backend.<kind>_energy(table, coordinates)`` returns the energy of each row, and
 ``force.energy(coordinates)`` evaluates the force's own table with its ``k`` multiplier. The behavioural
 requirements tested here:
 
 * N1. For every force class and every reference structure (A, B and curved B DNA), the per-interaction numpy
   energies of a force sum to the energy OpenMM computes for that force alone, for one frame and for a batch of
-  frames, including the global ``k`` multiplier. There is one energy per row of ``force.table``, the backend
-  function gives the same numbers, and neither path calls OpenMM.
+  frames, including the global ``k`` multiplier. There is one energy per row of ``force.parameter_table``, the
+  backend function gives the same numbers, and neither path calls OpenMM.
 * N2. With periodic boundary conditions, a duplex wrapped across the box boundary has the numpy energy OpenMM
   computes with the same orthorhombic box, which differs from the energy of the same coordinates without a box.
 * N3. The box must match the force: a periodic force without a box, a non-periodic force with a box and a
   non-orthorhombic box are refused.
-* N4. Evaluating an edited table: when the parameters of a few rows change, only their energies change, and the
-  total changes as it does in OpenMM after the same change.
+* N4. Evaluating an edited table: when the parameters of a few rows of a bonded table change, only their energies
+  change, and the total changes as it does in OpenMM after the same change. (The nonbonded forces keep their
+  parameters per donor, acceptor or particle, so one pair cannot be changed alone in OpenMM.)
 """
 import tempfile
 from functools import lru_cache
@@ -34,8 +36,11 @@ test_path = Path(__file__).parent
 _outdir = Path(tempfile.mkdtemp(prefix='open3spn2_numpy_'))
 
 STRUCTURES = {'A': test_path / 'adna', 'B': test_path / 'bdna', 'B_curved': test_path / 'bdna_curv'}
-FORCES = ['Bond', 'Angle', 'Stacking', 'Dihedral']
-KERNELS = {'Bond': 'bond', 'Angle': 'angle', 'Stacking': 'stacking', 'Dihedral': 'dihedral'}
+BONDED = ['Bond', 'Angle', 'Stacking', 'Dihedral']
+FORCES = BONDED + ['BasePair', 'CrossStacking', 'Exclusion', 'Electrostatics']
+KERNELS = {'Bond': 'bond', 'Angle': 'angle', 'Stacking': 'stacking', 'Dihedral': 'dihedral',
+           'BasePair': 'base_pair', 'CrossStacking': 'cross_stacking', 'Exclusion': 'exclusion',
+           'Electrostatics': 'electrostatics'}
 K = 0.7
 ATOL = 1e-6  # kJ/mol
 
@@ -85,11 +90,13 @@ def _openmm_energies(force, frames, box=None):
 @pytest.mark.parametrize('dna_type', list(STRUCTURES))
 @pytest.mark.parametrize('force_name', FORCES)
 def test_numpy_energies_match_openmm(force_name, dna_type, monkeypatch):
+    """N1: the per-interaction numpy energies of each force sum to its OpenMM energy on every frame, one energy per
+    table row, the method and the backend function agree, and neither calls OpenMM."""
     dna = _dna(dna_type)
     dna.periodic = False
     frames = _frames(dna_type)
     force = _build(force_name, dna, k=K)
-    table = force.table
+    table = force.parameter_table
     table_energy = getattr(backend, f'{KERNELS[force_name]}_energy')
 
     with monkeypatch.context() as m:
@@ -107,8 +114,10 @@ def test_numpy_energies_match_openmm(force_name, dna_type, monkeypatch):
 
 @pytest.mark.parametrize('force_name', FORCES)
 def test_periodic_box(force_name):
+    """N2: a duplex wrapped across the boundary of an orthorhombic box has the energy OpenMM computes with that
+    box, and the box matters (the same coordinates without a box give another energy)."""
     dna = _dna('B')
-    frames = _frames('B')[:2]
+    frames = _frames('B')[1:3]  # jittered: the exclusions of the undistorted structure are all zero
     box = np.array([13.7, 12.9, 14.3])
     wrapped = (frames - frames.mean(axis=(0, 1)) + box) % box  # centred on a box corner
     dna.periodic = True
@@ -124,6 +133,8 @@ def test_periodic_box(force_name):
 
 
 def test_box_must_match_the_force():
+    """N3: a periodic force refuses coordinates without a box, a non-periodic force refuses a box, and a
+    non-orthorhombic box is not implemented."""
     dna = _dna('B')
     x = _frames('B')[0]
     dna.periodic = True
@@ -153,11 +164,13 @@ def _set_parameters(force, i, particles, values):
         force.setTorsionParameters(i, *particles, values)
 
 
-@pytest.mark.parametrize('force_name', FORCES)
+@pytest.mark.parametrize('force_name', BONDED)
 def test_edited_table(force_name):
+    """N4: editing the parameters of a few rows of a copy of a bonded table changes only those rows' energies, and
+    the new total equals OpenMM's after the same parameters are set on the OpenMM force."""
     dna = _dna('B_curved')
     frames = _frames('B_curved')
-    table = _build(force_name, dna).table
+    table = _build(force_name, dna).parameter_table
     particle_columns = [c for c in ['aai', 'aaj', 'aak', 'aal'] if c in table]
     parameter_columns = [c for c in table if c not in particle_columns]
     changed = np.array([0, len(table) // 2, len(table) - 1])

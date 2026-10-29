@@ -7,10 +7,12 @@ Every interaction has two functions:
 * the table evaluator, e.g. ``angle_energy(table, coordinates, box=None)``, which computes the geometry of every
   row of an interaction table and returns the energy of each row.
 
-An interaction table is a DataFrame with one row per interaction: the particle indices in the columns ``aai``,
-``aaj``, ``aak``, ``aal`` and one column per parameter, named as in the OpenMM force (the ``table`` of a force
-class). Coordinates are (N, 3) or (frames, N, 3); a periodic ``box`` is orthorhombic. Units are those of the
-OpenMM forces: nm, rad and kJ/mol. The global ``k`` multiplier of a force is not included.
+An interaction table is a DataFrame with one row per interaction (the ``parameter_table`` of a force class): the
+particle indices in the columns ``aai``, ``aaj``, ``aak``, ``aal``, or ``d1``, ``d2``, ``a1``, ``a2``, ``a3`` for the
+donor-acceptor forces, and one column per parameter, named as in the OpenMM force. Parameters that OpenMM combines
+from two particles are stored combined, and the cutoff and global parameters are columns too. Coordinates are
+(N, 3) or (frames, N, 3); a periodic ``box`` is orthorhombic. Units are those of the OpenMM forces: nm, rad and
+kJ/mol. The global ``k`` multiplier of a force is not included.
 """
 import numpy as np
 
@@ -78,3 +80,74 @@ def dihedral_energy(table, coordinates, box=None):
     theta = dihedrals(coordinates, table[['aai', 'aaj', 'aak', 'aal']].to_numpy(), box)
     return dihedral(theta, table['K_periodic'].to_numpy(), table['K_gaussian'].to_numpy(),
                     table['sigma'].to_numpy(), table['t0'].to_numpy())
+
+
+def base_pair(r, theta1, theta2, phi, phi0, sigma, t01, t02, rng, epsilon, alpha):
+    """Base pairing: a Morse well in the distance r of the paired bases, whose attraction is modulated by the
+    angles theta1 (sugar, base, paired base) and theta2 (paired sugar, paired base, base) and by the dihedral phi
+    (sugar, base, paired base, paired sugar)."""
+    repulsion, attraction = morse(r - sigma, epsilon, alpha)
+    return repulsion + 0.5 * (1 + np.cos(phi - phi0)) * gate(rng * (theta1 - t01)) * gate(rng * (theta2 - t02)) \
+        * attraction
+
+
+def base_pair_energy(table, coordinates, box=None):
+    """The rows of a base pair table are (base ``d1``, sugar ``d2``) donors paired with (base ``a1``, sugar ``a2``)
+    acceptors; pairs whose bases are farther apart than ``cutoff`` have no energy."""
+    r = distances(coordinates, table[['d1', 'a1']].to_numpy(), box)
+    theta1 = angles(coordinates, table[['d2', 'd1', 'a1']].to_numpy(), box)
+    theta2 = angles(coordinates, table[['a2', 'a1', 'd1']].to_numpy(), box)
+    phi = dihedrals(coordinates, table[['d2', 'd1', 'a1', 'a2']].to_numpy(), box)
+    energy = base_pair(r, theta1, theta2, phi, table['phi0'].to_numpy(), table['sigma'].to_numpy(),
+                       table['t01'].to_numpy(), table['t02'].to_numpy(), table['rng'].to_numpy(),
+                       table['epsilon'].to_numpy(), table['alpha'].to_numpy())
+    return np.where(r < table['cutoff'].to_numpy(), energy, 0.0)
+
+
+def cross_stacking(r, theta1, theta2, phi, theta_cs, t03, t0CS, rng_CS, rng_BP, epsilon, alpha, sigma):
+    """Cross stacking: the attractive part of a Morse well in the distance r between a base and the neighbour of
+    its paired base, modulated by the angle theta_cs (sugar, base, neighbour) and by the angle theta3 between the
+    base-sugar bonds of the pair, computed from the base pair angles theta1, theta2 and dihedral phi."""
+    _, attraction = morse(r - sigma, epsilon, alpha)
+    cos_theta3 = np.clip(np.sin(theta1) * np.sin(theta2) * np.cos(phi) - np.cos(theta1) * np.cos(theta2), -0.99, 0.99)
+    theta3 = np.arccos(cos_theta3)
+    return gate(rng_BP * (theta3 - t03)) * gate(rng_CS * (theta_cs - t0CS)) * attraction / 2
+
+
+def cross_stacking_energy(table, coordinates, box=None):
+    """The rows of a cross stacking table are (base ``d1``, sugar ``d2``) donors paired with (base ``a1``, sugar
+    ``a2``, neighbour ``a3``) acceptors; pairs whose bases ``d1``, ``a1`` are farther apart than ``cutoff`` have no
+    energy."""
+    r = distances(coordinates, table[['d1', 'a3']].to_numpy(), box)
+    theta1 = angles(coordinates, table[['d2', 'd1', 'a1']].to_numpy(), box)
+    theta2 = angles(coordinates, table[['d1', 'a1', 'a2']].to_numpy(), box)
+    phi = dihedrals(coordinates, table[['d2', 'd1', 'a1', 'a2']].to_numpy(), box)
+    theta_cs = angles(coordinates, table[['d2', 'd1', 'a3']].to_numpy(), box)
+    energy = cross_stacking(r, theta1, theta2, phi, theta_cs, table['t03'].to_numpy(), table['t0CS'].to_numpy(),
+                            table['rng_CS'].to_numpy(), table['rng_BP'].to_numpy(), table['epsilon'].to_numpy(),
+                            table['alpha'].to_numpy(), table['sigma'].to_numpy())
+    cutoff = distances(coordinates, table[['d1', 'a1']].to_numpy(), box) < table['cutoff'].to_numpy()
+    return np.where(cutoff, energy, 0.0)
+
+
+def exclusion(r, epsilon, sigma):
+    """Excluded volume: a Lennard-Jones repulsion shifted to zero at, and truncated beyond, r = sigma."""
+    return np.where(r <= sigma, epsilon * ((sigma / r) ** 12 - 2 * (sigma / r) ** 6) + epsilon, 0.0)
+
+
+def exclusion_energy(table, coordinates, box=None):
+    r = distances(coordinates, table[['aai', 'aaj']].to_numpy(), box)
+    energy = exclusion(r, table['epsilon'].to_numpy(), table['sigma'].to_numpy())
+    return np.where(r < table['cutoff'].to_numpy(), energy, 0.0)
+
+
+def electrostatics(r, qq, dh_length, denominator):
+    """Debye-Hueckel screened Coulomb interaction of two charges with product qq."""
+    return qq * np.exp(-r / dh_length) / denominator / r
+
+
+def electrostatics_energy(table, coordinates, box=None):
+    r = distances(coordinates, table[['aai', 'aaj']].to_numpy(), box)
+    energy = electrostatics(r, table['qq'].to_numpy(), table['dh_length'].to_numpy(),
+                            table['denominator'].to_numpy())
+    return np.where(r < table['cutoff'].to_numpy(), energy, 0.0)

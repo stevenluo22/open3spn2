@@ -1,3 +1,4 @@
+import functools
 import numpy as np
 import pandas
 import itertools
@@ -29,6 +30,44 @@ def chained_sequence_index(atoms, chain_gap=100):
     chain_start = chains.min()
     chain_offset = (chains.max() - chain_start + chain_gap).cumsum().shift(fill_value=0)
     return resSeq - atoms['chainID'].map(chain_start) + atoms['chainID'].map(chain_offset)
+
+
+def hbond_pairs(force):
+    """Every donor-acceptor pair of a CustomHbondForce that is not excluded: particles d1, d2, d3, a1, a2, a3, the
+    per-donor and per-acceptor parameters and the cutoff, one row per pair."""
+    donor_names = [force.getPerDonorParameterName(i) for i in range(force.getNumPerDonorParameters())]
+    acceptor_names = [force.getPerAcceptorParameterName(i) for i in range(force.getNumPerAcceptorParameters())]
+    donors = pandas.DataFrame([[*particles, *parameters] for *particles, parameters in
+                               (force.getDonorParameters(i) for i in range(force.getNumDonors()))],
+                              columns=['d1', 'd2', 'd3'] + donor_names)
+    acceptors = pandas.DataFrame([[*particles, *parameters] for *particles, parameters in
+                                  (force.getAcceptorParameters(i) for i in range(force.getNumAcceptors()))],
+                                 columns=['a1', 'a2', 'a3'] + acceptor_names)
+    donors['donor'] = donors.index
+    acceptors['acceptor'] = acceptors.index
+    pairs = donors.merge(acceptors, how='cross')
+    excluded = pandas.DataFrame([force.getExclusionParticles(i) for i in range(force.getNumExclusions())],
+                                columns=['donor', 'acceptor'], dtype=int)
+    pairs = pairs.merge(excluded, how='left', indicator=True)
+    pairs = pairs[pairs['_merge'] == 'left_only'].drop(columns=['donor', 'acceptor', '_merge'])
+    pairs['cutoff'] = force.getCutoffDistance().value_in_unit(unit.nanometer)
+    return pairs.reset_index(drop=True)
+
+
+def nonbonded_pairs(force):
+    """Every pair i < j of particles of a CustomNonbondedForce that is not excluded: particles aai, aaj and the
+    per-particle parameters of each, suffixed 1 and 2 as in the energy expression, one row per pair."""
+    names = [force.getPerParticleParameterName(i) for i in range(force.getNumPerParticleParameters())]
+    particles = pandas.DataFrame([force.getParticleParameters(i) for i in range(force.getNumParticles())],
+                                 columns=names)
+    aai, aaj = np.triu_indices(len(particles), 1)
+    pairs = pandas.concat([pandas.DataFrame({'aai': aai, 'aaj': aaj}),
+                           particles.iloc[aai].add_suffix('1').reset_index(drop=True),
+                           particles.iloc[aaj].add_suffix('2').reset_index(drop=True)], axis=1)
+    excluded = pandas.DataFrame([sorted(force.getExclusionParticles(i)) for i in range(force.getNumExclusions())],
+                                columns=['aai', 'aaj'], dtype=int)
+    pairs = pairs.merge(excluded, how='left', indicator=True)
+    return pairs[pairs['_merge'] == 'left_only'].drop(columns='_merge').reset_index(drop=True)
 
 
 class Bond(DNAForce, openmm.CustomBondForce):
@@ -66,7 +105,9 @@ class Bond(DNAForce, openmm.CustomBondForce):
                           b['Kb4']]
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
-    def read_table(self):
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per bond of the OpenMM force: particles aai, aaj and the per-bond parameters."""
         names = [self.force.getPerBondParameterName(i) for i in range(self.force.getNumPerBondParameters())]
         rows = []
         for i in range(self.force.getNumBonds()):
@@ -75,8 +116,8 @@ class Bond(DNAForce, openmm.CustomBondForce):
         return pandas.DataFrame(rows, columns=['aai', 'aaj'] + names)
 
     def energy(self, coordinates, box=None):
-        """Energy (kJ/mol) of each bond of `table` at `coordinates` (nm), shape (..., bonds)."""
-        return self.k * backend.bond_energy(self.table, coordinates, self._checked_box(box))
+        """Energy (kJ/mol) of each bond of the parameter table at `coordinates` (nm), shape (..., bonds)."""
+        return self.k * backend.bond_energy(self.parameter_table, coordinates, self._checked_box(box))
 
 
 class Angle(DNAForce, openmm.CustomAngleForce):
@@ -103,7 +144,9 @@ class Angle(DNAForce, openmm.CustomAngleForce):
                           a['epsilon'] * 2]
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), parameters)
 
-    def read_table(self):
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per angle of the OpenMM force: particles aai, aaj, aak and the per-angle parameters."""
         names = [self.force.getPerAngleParameterName(i) for i in range(self.force.getNumPerAngleParameters())]
         rows = []
         for i in range(self.force.getNumAngles()):
@@ -112,8 +155,8 @@ class Angle(DNAForce, openmm.CustomAngleForce):
         return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak'] + names)
 
     def energy(self, coordinates, box=None):
-        """Energy (kJ/mol) of each angle of `table` at `coordinates` (nm), shape (..., angles)."""
-        return self.k * backend.angle_energy(self.table, coordinates, self._checked_box(box))
+        """Energy (kJ/mol) of each angle of the parameter table at `coordinates` (nm), shape (..., angles)."""
+        return self.k * backend.angle_energy(self.parameter_table, coordinates, self._checked_box(box))
 
 
 class Stacking(DNAForce, openmm.CustomCompoundBondForce):
@@ -154,7 +197,10 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
                           a['rng']]
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
-    def read_table(self):
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per stacking of the OpenMM force: particles aai (sugar), aaj (base), aak (stacked base) and the
+        per-bond parameters."""
         names = [self.force.getPerBondParameterName(i) for i in range(self.force.getNumPerBondParameters())]
         rows = []
         for i in range(self.force.getNumBonds()):
@@ -163,8 +209,8 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
         return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak'] + names)
 
     def energy(self, coordinates, box=None):
-        """Energy (kJ/mol) of each stacking of `table` at `coordinates` (nm), shape (..., stackings)."""
-        return self.k * backend.stacking_energy(self.table, coordinates, self._checked_box(box))
+        """Energy (kJ/mol) of each stacking of the parameter table at `coordinates` (nm), shape (..., stackings)."""
+        return self.k * backend.stacking_energy(self.parameter_table, coordinates, self._checked_box(box))
 
 
 class Dihedral(DNAForce, openmm.CustomTorsionForce):
@@ -199,7 +245,9 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
             particles = [a['aai'], a['aaj'], a['aak'], a['aal']]
             self.force.addTorsion(*particles, parameters)
 
-    def read_table(self):
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per dihedral of the OpenMM force: particles aai, aaj, aak, aal and the per-torsion parameters."""
         names = [self.force.getPerTorsionParameterName(i) for i in range(self.force.getNumPerTorsionParameters())]
         rows = []
         for i in range(self.force.getNumTorsions()):
@@ -208,8 +256,8 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
         return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak', 'aal'] + names)
 
     def energy(self, coordinates, box=None):
-        """Energy (kJ/mol) of each dihedral of `table` at `coordinates` (nm), shape (..., dihedrals)."""
-        return self.k * backend.dihedral_energy(self.table, coordinates, self._checked_box(box))
+        """Energy (kJ/mol) of each dihedral of the parameter table at `coordinates` (nm), shape (..., dihedrals)."""
+        return self.k * backend.dihedral_energy(self.parameter_table, coordinates, self._checked_box(box))
 
 
 class BasePair(DNAForce, openmm.CustomHbondForce):
@@ -315,7 +363,22 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             for a1, a2, seqid in zip(A1_list, A2_list, A1['seqid']):
                 self.forces[i].addAcceptor(a1, a2, -1, [int(seqid)])
 
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per donor-acceptor pair of the OpenMM forces that is not masked by the sequence separation:
+        particles d1 (base), d2 (sugar), a1 (paired base), a2 (paired sugar), the parameters of the pair and the
+        cutoff."""
+        pairs = pandas.concat([hbond_pairs(force) for force in self.forces.values()], ignore_index=True)
+        pairs = pairs[(pairs['seqid_a'] - pairs['seqid_d']).abs() >= self.min_seq_sep]
+        return pairs[['d1', 'd2', 'a1', 'a2', 'phi0', 'sigma', 't01', 't02', 'rng', 'epsilon', 'alpha',
+                      'cutoff']].reset_index(drop=True)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each base pair of the parameter table at `coordinates` (nm), shape (..., pairs)."""
+        return self.k * backend.base_pair_energy(self.parameter_table, coordinates, self._checked_box(box))
+
     def addForce(self, system):
+        self.parameter_table
         for f in self.forces:
             system.addForce(self.forces[f])
 
@@ -479,7 +542,23 @@ class CrossStacking(DNAForce):
                     for acceptor_index in sorted(shared):
                         force.addExclusion(donor_index, acceptor_index)
 
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per donor-acceptor pair of the OpenMM forces that is not excluded or masked by the sequence
+        separation: particles d1 (base), d2 (sugar), a1 (paired base), a2 (paired sugar), a3 (neighbour of the
+        paired base), the parameters of the pair and the cutoff."""
+        pairs = pandas.concat([hbond_pairs(force) for forces in self.crossStackingForces.values() for force in forces],
+                              ignore_index=True)
+        pairs = pairs[(pairs['seqid_a'] - pairs['seqid_d']).abs() >= self.min_seq_sep]
+        return pairs[['d1', 'd2', 'a1', 'a2', 'a3', 't03', 't0CS', 'rng_CS', 'rng_BP', 'epsilon', 'alpha', 'sigma',
+                      'cutoff']].reset_index(drop=True)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each cross stacking of the parameter table at `coordinates` (nm), shape (..., pairs)."""
+        return self.k * backend.cross_stacking_energy(self.parameter_table, coordinates, self._checked_box(box))
+
     def addForce(self, system):
+        self.parameter_table
         for c1, c2 in self.crossStackingForces.values():
             system.addForce(c1)
             system.addForce(c2)
@@ -548,6 +627,24 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
             else:
                 parameters = [0, .1, 0]  # Null energy, some radius, non-base
             self.force.addParticle(parameters + [int(atom.seqid)])
+
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per particle pair of the OpenMM force that is not masked by the sequence separation or as a base
+        pair: particles aai, aaj, the combined epsilon and sigma of the pair and the cutoff."""
+        pairs = nonbonded_pairs(self.force)
+        base_pair = pairs['bt1'] + pairs['bt2'] == 5
+        pairs = pairs[((pairs['seqid2'] - pairs['seqid1']).abs() >= self.min_seq_sep) & ~base_pair]
+        return pandas.DataFrame({'aai': pairs['aai'],
+                                 'aaj': pairs['aaj'],
+                                 'epsilon': np.sqrt(pairs['epsilon1'] * pairs['epsilon2']),
+                                 'sigma': 0.5 * (pairs['sigma1'] + pairs['sigma2']),
+                                 'cutoff': self.force.getCutoffDistance().value_in_unit(unit.nanometer)}
+                                ).reset_index(drop=True)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each particle pair of the parameter table at `coordinates` (nm), shape (..., pairs)."""
+        return self.k * backend.exclusion_energy(self.parameter_table, coordinates, self._checked_box(box))
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
@@ -618,3 +715,23 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
                 parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
             self.force.addParticle(parameters + [int(atom.seqid)])
+
+    @functools.cached_property
+    def parameter_table(self):
+        """One row per particle pair of the OpenMM force that is not masked by the sequence separation: particles
+        aai, aaj, the product qq of their charges, the global parameters dh_length and denominator and the cutoff."""
+        global_parameters = {self.force.getGlobalParameterName(i): self.force.getGlobalParameterDefaultValue(i)
+                   for i in range(self.force.getNumGlobalParameters())}
+        pairs = nonbonded_pairs(self.force)
+        pairs = pairs[(pairs['seqid2'] - pairs['seqid1']).abs() >= self.min_seq_sep]
+        return pandas.DataFrame({'aai': pairs['aai'],
+                                 'aaj': pairs['aaj'],
+                                 'qq': pairs['q1'] * pairs['q2'],
+                                 'dh_length': global_parameters['dh_length'],
+                                 'denominator': global_parameters['denominator'],
+                                 'cutoff': self.force.getCutoffDistance().value_in_unit(unit.nanometer)}
+                                ).reset_index(drop=True)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each particle pair of the parameter table at `coordinates` (nm), shape (..., pairs)."""
+        return self.k * backend.electrostatics_energy(self.parameter_table, coordinates, self._checked_box(box))

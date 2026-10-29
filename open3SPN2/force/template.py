@@ -1,6 +1,5 @@
 class DNAForce(object):
     """ Wrapper for the openMM force. """
-    _table = None
 
     def __init__(self, dna):
         self.periodic = dna.periodic
@@ -29,17 +28,9 @@ class DNAForce(object):
         (e.g. BasePair, CrossStacking) override this to add all of them.
 
         The system takes ownership of the OpenMM force, so the interaction table is read before it is added."""
-        if hasattr(type(self), 'read_table'):
-            self.table
+        if hasattr(type(self), 'parameter_table'):
+            self.parameter_table
         system.addForce(self.force)
-
-    @property
-    def table(self):
-        """DataFrame of the interactions of this force (particle indices and parameters), read once from the OpenMM
-        force(s) by `read_table` and cached."""
-        if self._table is None:
-            self._table = self.read_table()
-        return self._table
 
     def _checked_box(self, box):
         if self.periodic and box is None:
