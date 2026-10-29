@@ -6,6 +6,7 @@ import itertools
 import openmm
 import openmm.unit as unit
 from .template import DNAForce
+from . import backend
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
@@ -65,6 +66,18 @@ class Bond(DNAForce, openmm.CustomBondForce):
                           b['Kb4']]
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
+    def read_table(self):
+        names = [self.force.getPerBondParameterName(i) for i in range(self.force.getNumPerBondParameters())]
+        rows = []
+        for i in range(self.force.getNumBonds()):
+            aai, aaj, parameters = self.force.getBondParameters(i)
+            rows.append([aai, aaj, *parameters])
+        return pandas.DataFrame(rows, columns=['aai', 'aaj'] + names)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each bond of `table` at `coordinates` (nm), shape (..., bonds)."""
+        return self.k * backend.bond_energy(self.table, coordinates, self._checked_box(box))
+
 
 class Angle(DNAForce, openmm.CustomAngleForce):
     def __init__(self, dna, k=1, k_name=None, force_group=7):
@@ -89,6 +102,18 @@ class Angle(DNAForce, openmm.CustomAngleForce):
             parameters = [a['t0'] * _af,
                           a['epsilon'] * 2]
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), parameters)
+
+    def read_table(self):
+        names = [self.force.getPerAngleParameterName(i) for i in range(self.force.getNumPerAngleParameters())]
+        rows = []
+        for i in range(self.force.getNumAngles()):
+            aai, aaj, aak, parameters = self.force.getAngleParameters(i)
+            rows.append([aai, aaj, aak, *parameters])
+        return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak'] + names)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each angle of `table` at `coordinates` (nm), shape (..., angles)."""
+        return self.k * backend.angle_energy(self.table, coordinates, self._checked_box(box))
 
 
 class Stacking(DNAForce, openmm.CustomCompoundBondForce):
@@ -129,6 +154,18 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
                           a['rng']]
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
+    def read_table(self):
+        names = [self.force.getPerBondParameterName(i) for i in range(self.force.getNumPerBondParameters())]
+        rows = []
+        for i in range(self.force.getNumBonds()):
+            particles, parameters = self.force.getBondParameters(i)
+            rows.append([*particles, *parameters])
+        return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak'] + names)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each stacking of `table` at `coordinates` (nm), shape (..., stackings)."""
+        return self.k * backend.stacking_energy(self.table, coordinates, self._checked_box(box))
+
 
 class Dihedral(DNAForce, openmm.CustomTorsionForce):
     def __init__(self, dna, k=1, k_name=None, force_group=9):
@@ -161,6 +198,18 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
                           (180 + a['t0']) * _af]
             particles = [a['aai'], a['aaj'], a['aak'], a['aal']]
             self.force.addTorsion(*particles, parameters)
+
+    def read_table(self):
+        names = [self.force.getPerTorsionParameterName(i) for i in range(self.force.getNumPerTorsionParameters())]
+        rows = []
+        for i in range(self.force.getNumTorsions()):
+            aai, aaj, aak, aal, parameters = self.force.getTorsionParameters(i)
+            rows.append([aai, aaj, aak, aal, *parameters])
+        return pandas.DataFrame(rows, columns=['aai', 'aaj', 'aak', 'aal'] + names)
+
+    def energy(self, coordinates, box=None):
+        """Energy (kJ/mol) of each dihedral of `table` at `coordinates` (nm), shape (..., dihedrals)."""
+        return self.k * backend.dihedral_energy(self.table, coordinates, self._checked_box(box))
 
 
 class BasePair(DNAForce, openmm.CustomHbondForce):

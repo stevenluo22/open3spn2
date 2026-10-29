@@ -1,5 +1,6 @@
 #from .template import DNAForce
 #from .template import ProteinDNAForce
+from . import backend
 
 from .dna import Bond
 from .dna import Angle
