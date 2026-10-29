@@ -14,7 +14,7 @@ exclusion list and coexist on the CPU/GPU platforms -- no special case is needed
 """
 import openmm.unit as unit
 
-from .ff3SPN2 import forces
+from ..ff3SPN2 import forces
 
 
 class AlchemicalTransformation:
