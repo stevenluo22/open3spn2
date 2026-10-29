@@ -4,19 +4,21 @@ An alphabet lists the names a base-pair position can take: identities (one base 
 parameter interpolation between two identities). ``identity_tables(dna, sites, alphabet)`` finds the interactions
 whose parameters depend on the identities of the base-pair positions ``sites`` and lists their parameters at every
 assignment of names to the positions each interaction depends on: one DataFrame per kind, in the format of the
-force's ``parameter_table`` plus the columns ``term`` (the row of the wild-type parameter table), ``position_j`` and
-``name_j`` (the positions and the name index of each in this assignment, -1 padded). ``state_energies`` evaluates
+force's ``parameter_table`` plus the columns ``term`` (the number of the interaction), ``position_j`` and ``name_j``
+(the positions and the name index of each in this assignment, -1 padded). ``state_energies`` evaluates
 the tables for states, arrays with the name index of every position. The behavioural requirements tested here:
 
 * I1. The 'wc' alphabet is GC, AT, TA, CG and the mix W halfway between AT and TA; 'wc4' has no mix. A mix that
   does not interpolate between two identities, reuses a name or has a weight outside (0, 1) is refused.
-* I2. For every bonded kind and DNA type, the energy ``state_energies`` gives a Watson-Crick state, relative to the
-  wild type, equals the energy change of that force built natively on the mutant duplex (``DNA.create_mutant``),
-  for one frame and for a batch of frames; evaluating the tables builds no mutant and does not use OpenMM. The table
-  of a kind is empty exactly when the identities do not change its energy.
-* I3. A state with W at some positions has the energy of a duplex whose parameters are halfway between those of the
-  duplexes with AT and with TA at all of those positions; a circular parameter (an angle such as the dihedral t0) is
-  interpolated along the shorter arc.
+* I2. For every identity-dependent force (bonded, base pairing, cross stacking, excluded volume) and DNA type, the
+  energy ``state_energies`` gives a Watson-Crick state, relative to the wild type, equals the energy change of that
+  force built natively on the mutant duplex (``DNA.create_mutant``), for one frame and for a batch of frames;
+  evaluating the tables builds no mutant and does not use OpenMM. The table of a kind is empty exactly when the
+  identities do not change its energy.
+* I3. A state with W at some positions has the bonded energy of a duplex whose parameters are halfway between those
+  of the duplexes with AT and with TA at all of those positions; a circular parameter (an angle such as the dihedral
+  t0) is interpolated along the shorter arc. A nonbonded pair with W is halfway between its AT and TA parameters, or,
+  when it interacts at only one of them, has the parameters of that one at half the epsilon.
 * I4. Bad inputs are refused: a position whose wild-type base pair is not an identity of the alphabet, an alphabet
   with an identity that is not Watson-Crick (not implemented) and an interaction that would see mixes of different
   weights at once.
@@ -41,6 +43,7 @@ _outdir = Path(tempfile.mkdtemp(prefix='open3spn2_identity_'))
 
 STRUCTURES = {'A': test_path / 'adna', 'B': test_path / 'bdna', 'B_curved': test_path / 'bdna_curv'}
 BONDED = ['Bond', 'Angle', 'Stacking', 'Dihedral']
+KINDS = BONDED + ['BasePair', 'CrossStacking', 'Exclusion']
 # Strand-A residues of the positions: two adjacent ones and one three residues away, sharing some interactions.
 SITE_RESIDUES = [12, 13, 16]
 ATOL = 1e-6  # kJ/mol
@@ -134,7 +137,7 @@ def test_alphabet():
 
 
 @pytest.mark.parametrize('dna_type', list(STRUCTURES))
-@pytest.mark.parametrize('kind', BONDED)
+@pytest.mark.parametrize('kind', KINDS)
 def test_state_energies_match_mutants(kind, dna_type, monkeypatch):
     """I2: relative to the wild type, the table energy of random Watson-Crick states equals the energy change of the
     force built on the mutant duplex, frame by frame, the tables are evaluated without mutants, forces or OpenMM, and
@@ -175,6 +178,34 @@ def test_mix_is_the_joint_midpoint(kind, dna_type, monkeypatch):
     energies = _state_energies(tables, frames, states, kind, monkeypatch)
     expected = np.stack([_midpoint_energy(dna, sites, s, names, kind, frames) for s in states], axis=-1)
     np.testing.assert_allclose(energies - energies[:, :1], expected - expected[:, :1], rtol=0, atol=ATOL)
+
+
+@pytest.mark.parametrize('kind', ['BasePair', 'CrossStacking', 'Exclusion'])
+def test_nonbonded_mix(kind):
+    """I3: every nonbonded row with W at some positions is halfway between the rows of the same pair with AT and with
+    TA at all of them, or, when the pair interacts at only one of those, is that row at half the epsilon."""
+    tables = _tables('B_curved')
+    table = tables.kinds[kind]
+    w, at, ta = (tables.alphabet.index(name) for name in ('W', 'AT', 'TA'))
+    name_columns = [c for c in table if c.startswith('name_')]
+    parameter_columns = [c for c in getattr(dna_forces, kind)(_dna('B_curved')).parameter_table
+                         if c not in ('aai', 'aaj', 'aak', 'aal', 'd1', 'd2', 'a1', 'a2', 'a3')]
+    epsilon = parameter_columns.index('epsilon')
+    rows = table.set_index(['term'] + name_columns)[parameter_columns]
+    mixed = table[(table[name_columns] == w).any(axis=1)]
+    terms, names = mixed['term'].to_numpy(), mixed[name_columns].to_numpy()
+    low = rows.loc[[(t, *n) for t, n in zip(terms, np.where(names == w, at, names))]].to_numpy()
+    high = rows.loc[[(t, *n) for t, n in zip(terms, np.where(names == w, ta, names))]].to_numpy()
+    expected = (low + high) / 2
+    if kind == 'BasePair':
+        phi0 = parameter_columns.index('phi0')
+        expected[:, phi0] = low[:, phi0] + ((high[:, phi0] - low[:, phi0] + np.pi) % (2 * np.pi) - np.pi) / 2
+    for one, other in ((low, high), (high, low)):
+        alone = (one[:, epsilon] != 0) & (other[:, epsilon] == 0)
+        expected[alone] = one[alone]
+        expected[alone, epsilon] = one[alone, epsilon] / 2
+    assert ((low[:, epsilon] == 0) != (high[:, epsilon] == 0)).any()
+    np.testing.assert_allclose(mixed[parameter_columns].to_numpy(), expected, rtol=0, atol=1e-12)
 
 
 def test_mix_of_angles_takes_the_shorter_arc():
