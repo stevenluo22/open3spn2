@@ -35,6 +35,7 @@ import pandas
 
 from ..force import backend, dna as dna_forces
 from .alphabet import WATSON_CRICK, alphabet as make_alphabet
+from .switch import add_forces, set_state
 
 BONDED = {'Bond': dna_forces.Bond, 'Angle': dna_forces.Angle, 'Stacking': dna_forces.Stacking,
           'Dihedral': dna_forces.Dihedral}
@@ -49,11 +50,12 @@ TOLERANCE = 1e-9
 
 
 class IdentityTables:
-    """The identity tables of the positions `sites` of a duplex: `alphabet`, `sites` [((chain, residue) on strand A,
-    (chain, residue) on strand B)], `wild_type` (N,) the name indices of the duplex's own identities and `kinds`
-    {kind: DataFrame}."""
+    """The identity tables of the positions `sites` of the duplex `dna`: `alphabet`, `sites` [((chain, residue) on
+    strand A, (chain, residue) on strand B)], `wild_type` (N,) the name indices of the duplex's own identities and
+    `kinds` {kind: DataFrame}."""
 
-    def __init__(self, alphabet, sites, wild_type, kinds):
+    def __init__(self, dna, alphabet, sites, wild_type, kinds):
+        self.dna = dna
         self.alphabet = alphabet
         self.sites = sites
         self.wild_type = np.asarray(wild_type, dtype=int)
@@ -61,6 +63,12 @@ class IdentityTables:
 
     def state_energies(self, coordinates, states, box=None):
         return state_energies(self, coordinates, states, box)
+
+    def add_forces(self, system):
+        return add_forces(self, system)
+
+    def set_state(self, context, state, previous=None):
+        set_state(self, context, state, previous)
 
 
 def state_energies(tables, coordinates, states, box=None):
@@ -133,7 +141,7 @@ def identity_tables(dna, sites, alphabet=None):
     kinds['BasePair'] = base_pair_identity_table(dna_forces.BasePair(dna), sites, alphabet)
     kinds['CrossStacking'] = cross_stacking_identity_table(dna_forces.CrossStacking(dna), sites, alphabet)
     kinds['Exclusion'] = exclusion_identity_table(dna_forces.Exclusion(dna), sites, alphabet)
-    return IdentityTables(alphabet, sites, wild_type, kinds)
+    return IdentityTables(dna, alphabet, sites, wild_type, kinds)
 
 
 def base_table(dna, sites=()):

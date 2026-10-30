@@ -261,11 +261,14 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
 
 
 class BasePair(DNAForce, openmm.CustomHbondForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=10):
+    """Base pairing. The donors and acceptors of the bases with particle indices in `skip_bases` are left out."""
+
+    def __init__(self, dna, k=1, k_name=None, force_group=10, skip_bases=()):
         self.k = k
         self.k_name = k_name or 'k_basepair'
         self.force_group = force_group
         self.min_seq_sep = 3
+        self.skip_bases = set(skip_bases)
         super().__init__(dna)
 
     def reset(self):
@@ -359,9 +362,11 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             # Here I am including the same atom twice,
             # it doesn't seem to break things
             for d1, d2, seqid in zip(D1_list, D2_list, D1['seqid']):
-                self.forces[i].addDonor(d1, d2, -1, parameters + [int(seqid)])
+                if d1 not in self.skip_bases:
+                    self.forces[i].addDonor(d1, d2, -1, parameters + [int(seqid)])
             for a1, a2, seqid in zip(A1_list, A2_list, A1['seqid']):
-                self.forces[i].addAcceptor(a1, a2, -1, [int(seqid)])
+                if a1 not in self.skip_bases:
+                    self.forces[i].addAcceptor(a1, a2, -1, [int(seqid)])
 
     @functools.cached_property
     def parameter_table(self):
@@ -384,7 +389,10 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
 
 
 class CrossStacking(DNAForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=11):
+    """Cross stacking. The donors and acceptors whose interactions involve a base with particle index in
+    `skip_bases` (the first particle of a donor, the first or third of an acceptor) are left out."""
+
+    def __init__(self, dna, k=1, k_name=None, force_group=11, skip_bases=()):
         self.k = k
         self.k_name = k_name or 'k_crossstacking'
         self.force_group = force_group
@@ -392,6 +400,7 @@ class CrossStacking(DNAForce):
         # energy expression. 3SPN2 masks 3 residues; open3SPN2 masks 2 (min_seq_sep=3), which has
         # a small effect on B-DNA and curved B-DNA energies.
         self.min_seq_sep = 3
+        self.skip_bases = set(skip_bases)
         super().__init__(dna)
 
     def reset(self):
@@ -503,8 +512,10 @@ class CrossStacking(DNAForce):
                           param['alpha_cs2'],
                           param['Sigma_2']]
             seqid = [int(donator.seqid)]
-            groups[d1t][0]['donors'][(d1, d2, d3)] = c1.addDonor(d1, d2, d3, seqid)
-            groups[d1t][1]['acceptors'][(d1, d2, d3)] = c2.addAcceptor(d1, d2, d3, parameters + seqid)
+            if d1 not in self.skip_bases:
+                groups[d1t][0]['donors'][(d1, d2, d3)] = c1.addDonor(d1, d2, d3, seqid)
+            if not {d1, d3} & self.skip_bases:
+                groups[d1t][1]['acceptors'][(d1, d2, d3)] = c2.addAcceptor(d1, d2, d3, parameters + seqid)
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -523,8 +534,10 @@ class CrossStacking(DNAForce):
                           param['alpha_cs1'],
                           param['Sigma_1']]
             seqid = [int(aceptor.seqid)]
-            groups[d1t][0]['acceptors'][(a1, a2, a3)] = c1.addAcceptor(a1, a2, a3, parameters + seqid)
-            groups[d1t][1]['donors'][(a1, a2, a3)] = c2.addDonor(a1, a2, a3, seqid)
+            if not {a1, a3} & self.skip_bases:
+                groups[d1t][0]['acceptors'][(a1, a2, a3)] = c1.addAcceptor(a1, a2, a3, parameters + seqid)
+            if a1 not in self.skip_bases:
+                groups[d1t][1]['donors'][(a1, a2, a3)] = c2.addDonor(a1, a2, a3, seqid)
             aceptors[d1t] += [a1]
 
         # The sequence separation mask already sets the energy of close-in-sequence pairs to zero,
