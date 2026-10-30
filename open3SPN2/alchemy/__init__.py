@@ -7,3 +7,4 @@ from .tables import (IdentityTables, base_pair_identity_table, base_table, bonde
 from .sampler import (Factors, Model, adapt_offsets, conditional, factor_tables, joint, log_weights, model, sweep,
                       w_target, window_conditionals)
 from .estimate import free_energies, markov_log_probability, sequence_offsets
+from .gibbs import GibbsSampler, run
