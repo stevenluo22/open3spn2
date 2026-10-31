@@ -16,7 +16,11 @@ import itertools
 
 import numpy as np
 
-from .tables import ENERGIES
+from .tables import ENERGIES, GEOMETRIES
+
+PARTICLES = ('aai', 'aaj', 'aak', 'aal', 'd1', 'd2', 'a1', 'a2', 'a3')
+# {kind: (distance, bound)}: a row has no energy where the geometry `distance` of its interaction exceeds `bound`.
+SCREENS = {'BasePair': ('r', 'cutoff'), 'CrossStacking': ('r_pair', 'cutoff'), 'Exclusion': ('r', 'sigma')}
 
 MAX_ENUMERATION = 3125
 
@@ -63,32 +67,92 @@ class Model:
         return sweep(self, state, rng, block_size)
 
 
-def factor_tables(tables, coordinates, box=None):
-    """The `Factors` of the identity tables `tables` at `coordinates` (N, 3) or (frames, N, 3) in nm: the energies of
-    the interactions that depend on the same set of positions summed into one factor."""
+class FactorLayout:
+    """Where the rows of identity tables go in their factors: `sets` (F, w) sorted positions padded with -1, `ptr`
+    (F + 1,), and per kind in `kinds` {kind: (terms, cells, cell_ptr, row_column)}:
+
+    * ``terms``: the particles of every interaction, in term order, as a dict of column arrays;
+    * ``cells``: the term and the parameters of the distinct rows (interaction and parameters) whose energy can be
+      non-zero, i.e. with epsilon != 0, as a dict of column arrays;
+    * ``cell_ptr`` (C + 1,), ``row_column``: the factor entries of the rows of cell c are
+      ``row_column[cell_ptr[c]:cell_ptr[c + 1]]``.
+    """
+
+    def __init__(self, sets, ptr, kinds, n_names, n_positions):
+        self.sets = sets
+        self.ptr = ptr
+        self.kinds = kinds
+        self.n_names = n_names
+        self.n_positions = n_positions
+
+
+def factor_layout(tables):
+    """The `FactorLayout` of the identity tables `tables` (cached as ``tables.layout``): the interactions that depend
+    on the same set of positions share a factor."""
     n = len(tables.alphabet)
-    kinds = []
+    term_sets = {}
     for kind, table in tables.kinds.items():
-        if not len(table):
-            continue
-        term = table['term'].to_numpy()
-        first = np.flatnonzero(np.diff(term, prepend=-1))
+        first = np.flatnonzero(np.diff(table['term'].to_numpy(), prepend=-1))
         positions = table[[c for c in table if c.startswith('position_')]].to_numpy(dtype=int)[first]
-        kinds.append((kind, table, term, np.arange(len(table)) - first[term], [tuple(p[p >= 0]) for p in positions]))
-    sets = sorted({s for *_, term_sets in kinds for s in term_sets}, key=lambda s: (len(s), s))
+        term_sets[kind] = first, [tuple(p[p >= 0]) for p in positions]
+    sets = sorted({s for _, kind_sets in term_sets.values() for s in kind_sets}, key=lambda s: (len(s), s))
     index = {s: f for f, s in enumerate(sets)}
     ptr = np.concatenate([[0], np.cumsum([n ** len(s) for s in sets], dtype=int)])
 
-    frames = np.asarray(coordinates, dtype=float).reshape(-1, len(tables.dna.atoms), 3)
-    energies = np.zeros((len(frames), ptr[-1]))
-    for kind, table, term, within, term_sets in kinds:
-        factor = np.array([index[s] for s in term_sets], dtype=int)
-        np.add.at(energies, (slice(None), ptr[factor[term]] + within), ENERGIES[kind](table, frames, box))
+    kinds = {}
+    for kind, table in tables.kinds.items():
+        if not len(table):
+            continue
+        first, kind_sets = term_sets[kind]
+        term = table['term'].to_numpy()
+        column = ptr[np.array([index[s] for s in kind_sets], dtype=int)[term]] + np.arange(len(table)) - first[term]
+        key = [c for c in table if not c.startswith(('position_', 'name_'))]
+        row_cell = table.groupby(key, sort=False).ngroup().to_numpy()
+        cells = table.drop_duplicates(key)
+        live = cells['epsilon'].to_numpy() != 0 if 'epsilon' in cells else np.ones(len(cells), dtype=bool)
+        live_rows = np.flatnonzero(live[row_cell])
+        live_cell = (np.cumsum(live) - 1)[row_cell[live_rows]]
+        order = np.argsort(live_cell, kind='stable')
+        cell_ptr = np.concatenate([[0], np.cumsum(np.bincount(live_cell, minlength=live.sum()))])
+        particles = [c for c in key if c in PARTICLES]
+        kinds[kind] = ({c: table[c].to_numpy()[first] for c in particles},
+                       {c: cells[c].to_numpy()[live] for c in key if c not in particles}, cell_ptr,
+                       column[live_rows[order]])
 
     padded = np.full((len(sets), max((len(s) for s in sets), default=0)), -1)
     for f, s in enumerate(sets):
         padded[f, :len(s)] = s
-    return Factors(padded, ptr, energies, n, len(tables.sites))
+    return FactorLayout(padded, ptr, kinds, n, len(tables.sites))
+
+
+def factor_tables(tables, coordinates, box=None):
+    """The `Factors` of the identity tables `tables` at `coordinates` (N, 3) or (frames, N, 3) in nm: the energies of
+    the interactions that depend on the same set of positions summed into one factor.
+
+    The geometry of every interaction is computed once, the energy once per distinct parameter row with epsilon != 0,
+    and, for the nonbonded kinds, only for the rows whose particles are within the range of the potential (``SCREENS``)
+    at some frame; every other entry is exactly 0."""
+    layout = tables.layout
+    frames = np.asarray(coordinates, dtype=float).reshape(-1, len(tables.dna.atoms), 3)
+    columns, weights = [], []
+    for kind, (terms, cells, cell_ptr, row_column) in layout.kinds.items():
+        geometry = GEOMETRIES[kind](terms, frames, box)
+        cell_term = cells['term']
+        if kind in SCREENS:
+            distance, bound = SCREENS[kind]
+            near = np.flatnonzero((geometry[distance][:, cell_term] <= cells[bound]).any(axis=0))
+        else:
+            near = np.arange(len(cell_term))
+        energies = ENERGIES[kind]({c: v[near] for c, v in cells.items()}, None,
+                                  geometry={k: np.take(g, cell_term[near], axis=-1) for k, g in geometry.items()})
+        counts = cell_ptr[near + 1] - cell_ptr[near]
+        rows = np.repeat(cell_ptr[near] - np.cumsum(counts) + counts, counts) + np.arange(counts.sum())
+        columns.append(row_column[rows])
+        weights.append(np.repeat(energies, counts, axis=1))
+    columns = np.concatenate(columns) if columns else np.zeros(0, dtype=int)
+    weights = np.concatenate(weights, axis=1) if weights else np.zeros((len(frames), 0))
+    energies = np.stack([np.bincount(columns, w, minlength=layout.ptr[-1]) for w in weights])
+    return Factors(layout.sets.copy(), layout.ptr.copy(), energies, layout.n_names, layout.n_positions)
 
 
 def model(factors, kT, offsets=None, frame=0):

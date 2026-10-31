@@ -27,6 +27,7 @@ A mix has the parameters interpolated jointly between the assignments with all i
 identities. When a nonbonded pair interacts at only one of them, the mix has the parameters of that one at the
 interpolated epsilon.
 """
+import functools
 import itertools
 
 import numpy as np
@@ -42,6 +43,9 @@ BONDED = {'Bond': dna_forces.Bond, 'Angle': dna_forces.Angle, 'Stacking': dna_fo
 ENERGIES = {'Bond': backend.bond_energy, 'Angle': backend.angle_energy, 'Stacking': backend.stacking_energy,
             'Dihedral': backend.dihedral_energy, 'BasePair': backend.base_pair_energy,
             'CrossStacking': backend.cross_stacking_energy, 'Exclusion': backend.exclusion_energy}
+GEOMETRIES = {'Bond': backend.bond_geometry, 'Angle': backend.angle_geometry, 'Stacking': backend.stacking_geometry,
+              'Dihedral': backend.dihedral_geometry, 'BasePair': backend.base_pair_geometry,
+              'CrossStacking': backend.cross_stacking_geometry, 'Exclusion': backend.exclusion_geometry}
 CIRCULAR = {'Dihedral': ['t0']}
 PARTICLES = ['aai', 'aaj', 'aak', 'aal']
 COMPLEMENT = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
@@ -69,6 +73,12 @@ class IdentityTables:
 
     def set_state(self, context, state, previous=None):
         set_state(self, context, state, previous)
+
+    @functools.cached_property
+    def layout(self):
+        """The `FactorLayout` of the tables, cached: delete it after editing ``kinds``."""
+        from .sampler import factor_layout
+        return factor_layout(self)
 
 
 def state_energies(tables, coordinates, states, box=None):

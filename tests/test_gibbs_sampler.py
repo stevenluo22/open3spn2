@@ -12,8 +12,9 @@ energies: ``markov_log_probability`` is ln p(s) of the order-(k-1) Markov chain 
 ``free_energies`` removes the offsets. The behavioural requirements tested here:
 
 * G1. For the identity tables of a duplex, the factors are one table per distinct set of positions of the
-  interactions, with n^k entries per frame; a model built from those arrays alone gives, at every frame and for any
-  states (mixes included), the log-weights -(U + V) / kT, with U the sum over kinds of ``tables.state_energies``.
+  interactions, with n^k entries per frame; a model built from those arrays alone gives, at every frame of a batch
+  (with interactions in range at some frames only) and for any states (mixes included), the log-weights
+  -(U + V) / kT, with U the sum over kinds of ``tables.state_energies``.
 * G2. ``conditional`` of any block of positions (adjacent or not) and ``window_conditionals`` of windows of 1, 2 and 3
   consecutive positions equal the distributions obtained by enumerating every state.
 * G3. The states drawn by ``joint`` and by ``sweep`` with blocks of 1 and 2 positions have the single-position and
@@ -112,12 +113,13 @@ def duplex_tables(tmp_path_factory):
 
 def test_log_weights_match_state_energies(duplex_tables):
     """G1: the factors are one table of n^k entries per distinct set of positions of the identity tables, and a model
-    of those bare arrays gives random states (with W), at each of two frames, the log-weights -(U + V)/kT with U from
-    ``tables.state_energies``."""
+    of those bare arrays gives random states (with W), at each frame of a batch whose middle frame, compressed, brings
+    interactions in range that the others do not, the log-weights -(U + V)/kT with U from ``tables.state_energies``."""
     tables = duplex_tables
     n, N = len(tables.alphabet), len(tables.sites)
     x = tables.dna.atoms[['x', 'y', 'z']].to_numpy(float) / 10
-    frames = np.stack([x, x + np.random.default_rng(2).normal(scale=0.03, size=x.shape)])
+    compressed = x.mean(axis=0) + 0.95 * (x - x.mean(axis=0))
+    frames = np.stack([x, compressed, x + np.random.default_rng(2).normal(scale=0.03, size=x.shape)])
     rng = np.random.default_rng(4)
     states = rng.integers(0, len(tables.alphabet), size=(40, len(tables.sites)))
     offsets = rng.normal(size=(len(tables.sites), len(tables.alphabet)))

@@ -123,11 +123,11 @@ def minimum_image(v, box=None):
 
 
 def _vectors(x, start, end, box):
-    return minimum_image(x[..., end, :] - x[..., start, :], box)
+    return minimum_image(np.take(x, end, axis=-2) - np.take(x, start, axis=-2), box)
 
 
 def _dot(a, b):
-    return (a * b).sum(-1)
+    return a[..., 0] * b[..., 0] + a[..., 1] * b[..., 1] + a[..., 2] * b[..., 2]
 
 
 def distances(x, pairs, box=None):

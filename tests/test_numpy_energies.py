@@ -3,14 +3,16 @@
 Every force class can score its own interactions in numpy, from the same parameters it gives OpenMM. Its
 ``parameter_table`` is a DataFrame with one row per interaction (particle indices and parameters, read from the
 OpenMM force, without the pairs that the masks of a nonbonded force set to zero);
-``open3SPN2.force.backend.<kind>_energy(table, coordinates)`` returns the energy of each row, and
-``force.energy(coordinates)`` evaluates the force's own table with its ``k`` multiplier. The behavioural
-requirements tested here:
+``open3SPN2.force.backend.<kind>_energy(table, coordinates)`` returns the energy of each row (of a DataFrame or of a
+dict of column arrays), or of each row at the geometry ``<kind>_geometry(table, coordinates)`` of the rows given as
+``geometry``, and ``force.energy(coordinates)`` evaluates the force's own table with its ``k`` multiplier. The
+behavioural requirements tested here:
 
 * N1. For every force class and every reference structure (A, B and curved B DNA), the per-interaction numpy
   energies of a force sum to the energy OpenMM computes for that force alone, for one frame and for a batch of
   frames, including the global ``k`` multiplier. There is one energy per row of ``force.parameter_table``, the
-  backend function gives the same numbers, and neither path calls OpenMM.
+  backend function gives the same numbers, also on the table as a dict of column arrays and from the geometry of
+  its rows alone (without coordinates), and no path calls OpenMM.
 * N2. With periodic boundary conditions, a duplex wrapped across the box boundary has the numpy energy OpenMM
   computes with the same orthorhombic box, which differs from the energy of the same coordinates without a box.
 * N3. The box must match the force: a periodic force without a box, a non-periodic force with a box and a
@@ -91,22 +93,28 @@ def _openmm_energies(force, frames, box=None):
 @pytest.mark.parametrize('force_name', FORCES)
 def test_numpy_energies_match_openmm(force_name, dna_type, monkeypatch):
     """N1: the per-interaction numpy energies of each force sum to its OpenMM energy on every frame, one energy per
-    table row, the method and the backend function agree, and neither calls OpenMM."""
+    table row; the method and the backend function, on the DataFrame, on a dict of its columns and from the geometry
+    of the rows, agree, and none calls OpenMM."""
     dna = _dna(dna_type)
     dna.periodic = False
     frames = _frames(dna_type)
     force = _build(force_name, dna, k=K)
     table = force.parameter_table
     table_energy = getattr(backend, f'{KERNELS[force_name]}_energy')
+    table_geometry = getattr(backend, f'{KERNELS[force_name]}_geometry')
+    columns = {c: table[c].to_numpy() for c in table}
 
     with monkeypatch.context() as m:
         m.setattr(openmm, 'Context', _no_openmm)
         energies = force.energy(frames)
         single = force.energy(frames[0])
         functional = K * table_energy(table, frames)
+        from_columns = K * table_energy(columns, frames)
+        from_geometry = K * table_energy(columns, None, geometry=table_geometry(columns, frames))
     assert energies.shape == (len(frames), len(table))
     np.testing.assert_allclose(single, energies[0], rtol=0, atol=1e-12)
-    np.testing.assert_allclose(functional, energies, rtol=0, atol=1e-12)
+    for other in (functional, from_columns, from_geometry):
+        np.testing.assert_allclose(other, energies, rtol=0, atol=1e-12)
 
     expected = _openmm_energies(_build(force_name, dna, k=K), frames)
     np.testing.assert_allclose(energies.sum(-1), expected, rtol=0, atol=ATOL)
