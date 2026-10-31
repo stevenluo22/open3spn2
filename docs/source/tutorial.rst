@@ -188,6 +188,151 @@ thermodynamic-integration integrand, and includes the base-pairing and cross-sta
     delta_G = np.trapezoid(dGdl, windows)
 
 
+Energies in numpy
+-----------------
+Every DNA force can also score coordinates without OpenMM. ``force.parameter_table`` is a pandas DataFrame
+with one row per interaction: the particle indices (``aai``, ``aaj``, ``aak``, ``aal``, or ``d1``, ``d2``,
+``a1``, ``a2``, ``a3`` for base pairing and cross stacking) and the parameters, named and in the units of the
+OpenMM force (nm, rad, kJ/mol). ``force.energy(coordinates, box=None)`` returns the energy of every row.
+Coordinates are in nm, as (N, 3) or (frames, N, 3), and the energies are (rows,) or (frames, rows).
+
+.. code:: python
+
+    import open3SPN2
+
+    dna = open3SPN2.DNA.fromSequence('ACGTCACTTCCTCTGTACGT', dna_type='B_curved', output_pdb='initial.pdb')
+    dna.periodic = False
+    x = dna.atoms[['x', 'y', 'z']].to_numpy() / 10           # nm
+
+    stacking = open3SPN2.Stacking(dna)
+    stacking.parameter_table.head()                          # particles and parameters of each stacking
+    energies = stacking.energy(x)                            # kJ/mol, one per row
+
+The potentials are plain functions of ``open3SPN2.force.backend``. Each interaction has three:
+
+* the potential, for example ``stacking(r, theta, epsilon, sigma, t0, alpha, rng)``;
+* ``stacking_geometry(table, coordinates, box=None)``, which returns the distances and angles of every row;
+* ``stacking_energy(table, coordinates, box=None, geometry=None)``.
+
+A table can be any DataFrame (or dict of column arrays) in the format of ``parameter_table``. To score other
+parameters, edit a copy of the table and call the backend function.
+
+Base-pair identity tables
+-------------------------
+Every nucleotide has the same three beads, so the identity of a base pair is a set of parameters.
+``open3SPN2.alchemy.identity_tables`` lists, for a set of base-pair positions, the parameters of every
+interaction that depends on them, at every assignment of names to those positions. The names come from an
+alphabet:
+
+* ``alphabet('wc')`` has the four Watson-Crick pairs GC, AT, TA and CG, and the waypoint W, halfway between AT
+  and TA;
+* ``alphabet('wc4')`` has the four Watson-Crick pairs only.
+
+.. code:: python
+
+    from open3SPN2.alchemy import alphabet, identity_tables
+    from open3SPN2.force import backend
+
+    sites = [(('A', i), ('B', 21 - i)) for i in (13, 14, 15)]    # (strand A, strand B) residue of each position
+    tables = identity_tables(dna, sites, alphabet('wc'))
+
+    table = tables.kinds['BasePair']        # one row per interaction and assignment
+    table['energy'] = backend.base_pair_energy(table, x)
+
+Each row of ``tables.kinds[kind]`` has:
+
+* the interaction number ``term`` and its particles;
+* ``position_j`` and ``name_j``: the j-th position the interaction depends on, and its name in this row, as an index
+  into ``tables.alphabet.names`` (-1 where unused);
+* the parameters.
+
+Evaluating the backend function of a kind on its table gives the energy of every interaction for every
+assignment. A state is an array with the name index of every position. It selects one row of each interaction,
+and ``tables.state_energies(x, states)`` sums them per kind:
+
+.. code:: python
+
+    import numpy as np
+
+    names = tables.alphabet.names
+    mutant = tables.wild_type.copy()
+    mutant[2] = names.index('AT')
+    by_kind = tables.state_energies(x, np.array([tables.wild_type, mutant]))    # {kind: (2,)}
+
+The same tables switch identities in a running simulation. ``tables.add_forces(system)`` adds the DNA forces with
+every identity-dependent interaction moved into a switchable force. ``tables.set_state(context, state)`` then
+changes the identities without rebuilding the context:
+
+.. code:: python
+
+    system = open3SPN2.System(dna)
+    system.clearForces()
+    tables.add_forces(system)               # instead of system.add3SPN2forces()
+
+Free energies of sequences with the Gibbs identity sampler
+----------------------------------------------------------
+The Gibbs identity sampler treats the identities of the positions as variables of the simulation. Every move
+runs a short stretch of dynamics, 25 steps by default, in the current state. It then redraws the state from its
+distribution at the coordinates the dynamics reached:
+
+.. math::
+
+    p(s \mid x) \propto \exp(-(U_s(x) + V_s) / kT).
+
+Here ``V_s`` is the sum of one offset per position and name. The offsets keep every name visited. The time a run
+spends in each state, corrected for the offsets, gives the free energy of every sequence.
+
+.. code:: python
+
+    import openmm
+    import openmm.unit as unit
+    from open3SPN2.alchemy import GibbsSampler, w_target
+
+    integrator = openmm.LangevinMiddleIntegrator(300 * unit.kelvin, 2 / unit.picosecond, 2 * unit.femtosecond)
+    simulation = openmm.app.Simulation(system.top, system._wrapped_system, integrator)
+    simulation.context.setPositions(system.coord.positions)
+    simulation.minimizeEnergy()
+    simulation.context.setVelocitiesToTemperature(300 * unit.kelvin)
+
+    sampler = GibbsSampler(simulation, tables, move='joint', windows=(2,), seed=1)
+    sampler.run(20000, gamma=0.1, target=w_target(tables.alphabet, 0.1))   # 1 ns: adapt the offsets
+    records = sampler.run(80000)                                             # 4 ns of production
+
+The arguments and what each step does:
+
+* **The move.** ``move='joint'`` draws the whole state exactly; it enumerates every state, at most 3125. With many
+  positions, ``move='sweep'`` redraws blocks of ``block_size`` positions in turn.
+* **The offsets.** ``gamma`` adapts the offsets during a run by self-adjusted mixture sampling towards an occupancy
+  ``target``. ``w_target(alphabet, w)`` gives W a share ``w`` and splits the rest evenly among the four identities.
+  Adapt during equilibration, then keep the offsets fixed in production.
+* **Why W.** Without W the sampler almost never moves between a purine and a pyrimidine on strand A. W shares of 0.1
+  to 0.2 mix best.
+* **The records.** ``run`` returns, for every move, the state, the offsets in force and the conditional
+  distributions of every window of ``windows`` consecutive positions.
+
+From the window records, ``markov_log_probability`` and ``free_energies`` give the free energy of every
+sequence relative to the wild type. They remove the offsets exactly. With windows of two positions this is the
+nearest-neighbour model, which is exact when the identity-dependent energy couples only adjacent positions.
+
+.. code:: python
+
+    import itertools
+    from open3SPN2.alchemy import free_energies, markov_log_probability
+
+    identities = [names.index(name) for name in tables.alphabet.identities]
+    sequences = np.array(list(itertools.product(identities, repeat=3)))
+    log_p = markov_log_probability(records['window2'].mean(axis=0), sequences)
+    dF = free_energies(log_p, sequences, tables.wild_type, sampler.offsets, sampler.kT)   # kJ/mol
+
+A complete script is in ``examples/gibbs_sampler/gibbs_sampler.py``.
+
+**Cost.** Each move costs the dynamics plus one evaluation of the identity tables in numpy.
+
+* That evaluation is about 2 ms per move at one position and 5 ms at 16.
+* The geometry of each interaction is computed once, and pairs beyond their cutoff are skipped.
+* The bookkeeping behind this is cached as ``tables.layout``. Delete it (``del tables.layout``) after editing
+  ``tables.kinds``.
+
 Protein DNA system
 ------------------
 You can find this example on the `examples/Protein_DNA <https://github.com/cabb99/open3spn2/tree/master/examples/Protein_DNA>`_ folder. For this example you need to download the structure of the Lambda repressor-operator complex `1mlb.pdb <https://www.rcsb.org/structure/1LMB>`_. You will also need to have installed the `openAWSEM <https://github.com/npschafer/openawsem>`_ library.

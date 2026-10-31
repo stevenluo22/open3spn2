@@ -27,7 +27,7 @@ def _columns(table, *names):
 
 
 def gate(dt):
-    """Angular modulation of the 3SPN2 attractions: 1 for |dt| <= pi/2, sin(dt)^2 for pi/2 < |dt| <= pi, 0 beyond."""
+    """Angular modulation of the 3SPN2 attractions: 1 for abs(dt) <= pi/2, sin(dt)^2 for pi/2 < abs(dt) <= pi, 0 beyond."""
     magnitude = np.abs(dt)
     out = (magnitude <= np.pi / 2).astype(float)
     edge = (magnitude > np.pi / 2) & (magnitude <= np.pi)

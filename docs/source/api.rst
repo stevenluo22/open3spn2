@@ -69,6 +69,76 @@ DNA-Protein Forces
     :member-order: bysource
     :members:
 
+Numpy Energies
+^^^^^^^^^^^^^^
+
+.. automodule:: open3SPN2.force.backend
+    :members:
+
+Alchemy: Base-Pair Identities
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: open3SPN2.alchemy.AlchemicalTransformation
+    :member-order: bysource
+    :members:
+
+.. autoclass:: open3SPN2.alchemy.Alphabet
+
+.. autofunction:: open3SPN2.alchemy.alphabet
+
+.. autofunction:: open3SPN2.alchemy.identity_tables
+
+.. autoclass:: open3SPN2.alchemy.IdentityTables
+    :members:
+
+.. autofunction:: open3SPN2.alchemy.state_energies
+
+.. autofunction:: open3SPN2.alchemy.add_forces
+
+.. autofunction:: open3SPN2.alchemy.set_state
+
+Gibbs Identity Sampler
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: open3SPN2.alchemy.sampler
+    :noindex:
+
+.. autoclass:: open3SPN2.alchemy.GibbsSampler
+    :members:
+
+.. autofunction:: open3SPN2.alchemy.run
+
+.. autofunction:: open3SPN2.alchemy.factor_tables
+
+.. autofunction:: open3SPN2.alchemy.model
+
+.. autoclass:: open3SPN2.alchemy.Factors
+
+.. autoclass:: open3SPN2.alchemy.Model
+
+.. autofunction:: open3SPN2.alchemy.log_weights
+
+.. autofunction:: open3SPN2.alchemy.conditional
+
+.. autofunction:: open3SPN2.alchemy.window_conditionals
+
+.. autofunction:: open3SPN2.alchemy.joint
+
+.. autofunction:: open3SPN2.alchemy.sweep
+
+.. autofunction:: open3SPN2.alchemy.adapt_offsets
+
+.. autofunction:: open3SPN2.alchemy.w_target
+
+.. automodule:: open3SPN2.alchemy.estimate
+    :noindex:
+
+.. autofunction:: open3SPN2.alchemy.markov_log_probability
+
+.. autofunction:: open3SPN2.alchemy.sequence_offsets
+
+.. autofunction:: open3SPN2.alchemy.free_energies
+
 Utility Functions
 ^^^^^^^^^^^^^^^^^
 
