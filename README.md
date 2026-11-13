@@ -17,9 +17,25 @@ For protein-DNA simulations you will also need to install [openAWSEM](https://gi
 
 ```export PYTHONPATH=/path/to/openAWSEM:$PYTHONPATH```
 
+## Base-pair identity free energies
+
+Every DNA force can be evaluated in numpy (`force.parameter_table`, `force.energy(coordinates)`, `open3SPN2.force.backend`),
+and `open3SPN2.alchemy` builds on that to compute free energies of base-pair identities:
+
+- `AlchemicalTransformation`: a linear alchemical path between two sequences (thermodynamic integration, FEP/BAR).
+- `identity_tables`: the parameters of every interaction for every identity of a set of base-pair positions, with
+  switchable forces that change identities in a running simulation.
+- `GibbsSampler`: alternates molecular dynamics with redraws of the identities, giving the free energies of every
+  sequence of the positions in one simulation (`examples/gibbs_sampler`).
+
+See the tutorial for examples.
+
 ## Documentation
 
 Further documentation and tutorials are hosted in [readthedocs](https://open3spn2.readthedocs.io/en/latest/).
+
+## Acknowledgment
+Carlos Bueno was supported by the MolSSI Software Fellowship, under the mentorship of Jessica Nash. We thank AMD (Advanced Micro Devices, Inc.) for the donation of high-performance computing hardware and HPC resources. This project is also supported by the Center for Theoretical Biological Physics (NSF Grants PHY-2019745 and PHY-1522550), with additional support from the D.R. Bullard Welch Chair at Rice University (Grant No. C-0016 to PGW).
 
 ## Citations
 

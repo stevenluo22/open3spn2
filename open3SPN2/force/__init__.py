@@ -1,5 +1,6 @@
 #from .template import DNAForce
 #from .template import ProteinDNAForce
+from . import backend
 
 from .dna import Bond
 from .dna import Angle
@@ -9,7 +10,6 @@ from .dna import BasePair
 from .dna import CrossStacking
 from .dna import Exclusion
 from .dna import Electrostatics
-from .dna import addNonBondedExclusions
 
 from .protein_dna import ExclusionProteinDNA
 from .protein_dna import ElectrostaticsProteinDNA

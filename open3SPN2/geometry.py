@@ -1,4 +1,5 @@
 import numpy as np
+import openmm.unit as unit
 
 class Transform:
     def __init__(self, dx=0, dy=0, dz=0, rx=0, ry=0, rz=0):
@@ -98,3 +99,56 @@ class Transform:
         """
         c, s = np.cos(theta), np.sin(theta)
         return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+
+
+def _nanometers(x):
+    return np.asarray(x.value_in_unit(unit.nanometer) if unit.is_quantity(x) else x, dtype=float)
+
+
+def minimum_image(v, box=None):
+    """Displacement vectors `v` (..., 3) (nm) mapped to their nearest periodic image.
+
+    `box` is an orthorhombic box, as its three edge lengths (3,) or as diagonal box vectors (3, 3), in nm; with
+    no box the vectors are returned unchanged."""
+    if box is None:
+        return v
+    box = _nanometers(box)
+    if box.shape == (3, 3):
+        if np.any(box[~np.eye(3, dtype=bool)] != 0):
+            raise NotImplementedError('Only orthorhombic periodic boxes are supported')
+        box = np.diag(box)
+    if box.shape != (3,):
+        raise ValueError(f'A box has shape (3,) or (3, 3), not {box.shape}')
+    return v - box * np.floor(v / box + 0.5)
+
+
+def _vectors(x, start, end, box):
+    return minimum_image(np.take(x, end, axis=-2) - np.take(x, start, axis=-2), box)
+
+
+def _dot(a, b):
+    return a[..., 0] * b[..., 0] + a[..., 1] * b[..., 1] + a[..., 2] * b[..., 2]
+
+
+def distances(x, pairs, box=None):
+    """Distance (nm) of each pair (P, 2) of particles at positions `x` ((N, 3) or (frames, N, 3), nm)."""
+    x, pairs = _nanometers(x), np.asarray(pairs)
+    v = _vectors(x, pairs[:, 0], pairs[:, 1], box)
+    return np.sqrt(_dot(v, v))
+
+
+def angles(x, triples, box=None):
+    """Angle (rad) at the middle particle of each triple (A, 3) of particles."""
+    x, triples = _nanometers(x), np.asarray(triples)
+    v1 = _vectors(x, triples[:, 1], triples[:, 0], box)
+    v2 = _vectors(x, triples[:, 1], triples[:, 2], box)
+    return np.arccos(np.clip(_dot(v1, v2) / np.sqrt(_dot(v1, v1) * _dot(v2, v2)), -1.0, 1.0))
+
+
+def dihedrals(x, quadruplets, box=None):
+    """Dihedral angle (rad, in [-pi, pi], OpenMM sign convention) of each quadruplet (D, 4) of particles."""
+    x, quadruplets = _nanometers(x), np.asarray(quadruplets)
+    b0, b1, b2 = (_vectors(x, quadruplets[:, i], quadruplets[:, i + 1], box) for i in range(3))
+    n1, n2 = np.cross(b0, b1), np.cross(b1, b2)
+    m1 = np.cross(n1, b1 / np.sqrt(_dot(b1, b1))[..., None])
+    return -np.arctan2(_dot(m1, n2), _dot(n1, n2))
