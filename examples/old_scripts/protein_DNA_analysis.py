@@ -59,7 +59,7 @@ for force_name in open3SPN2.forces:
         force.addForce(s)
     else:
         s.addForce(force)
-    forces.update({force_name:force})
+    forces[force_name] = force
 
 #Add AWSEM forces
 ft=openawsem.functionTerms
@@ -90,27 +90,19 @@ for force_name in open3SPN2.protein_dna_forces:
     # print(force_name)
     force = open3SPN2.protein_dna_forces[force_name](dna,protein)
     s.addForce(force)
-    forces.update({force_name: force})
+    forces[force_name] = force
 
-#Fix exclussions
+#Add protein forces
 for force_name in openAWSEMforces:
     # print(force_name)
     if force_name in ['contact']:
-        force = openAWSEMforces[force_name](protein, 
+        force = openAWSEMforces[force_name](protein,
                                             withExclusion=False,
                                             periodic=False)
-        # print(force.getNumExclusions())
-        open3SPN2.addNonBondedExclusions(dna,force)
-        # print(force.getNumExclusions())
-    elif force_name in ['Excl']:
-        force = openAWSEMforces[force_name](protein)
-        # print(force.getNumExclusions())
-        open3SPN2.addNonBondedExclusions(dna,force)
-        # print(force.getNumExclusions())
     else:
         force = openAWSEMforces[force_name](protein)
     s.addForce(force)
-    forces.update({force_name: force})
+    forces[force_name] = force
 
 
 import simtk.openmm
@@ -190,7 +182,7 @@ energy_unit=simtk.openmm.unit.kilojoule_per_mole
 trajectory = md.load(args.trajectory, top=args.protein)
 
 energy_data = []
-for step, frame in enumerate(trajectory):
+for frame in trajectory:
     simulation.context.setPositions(frame.xyz[0])
     #Obtain total energy
     state = simulation.context.getState(getEnergy=True)
@@ -198,7 +190,7 @@ for step, frame in enumerate(trajectory):
 
     # Collect energies
     energies = {}
-    
+
     for force_name, force in forces.items():
         group = force.getForceGroup()
         state = simulation.context.getState(getEnergy=True, groups=2**group)
@@ -214,7 +206,7 @@ with open(outFile, "w") as out:
     line = " ".join(["{0:<8s}".format(i) for i in ["Steps"] + list(showAll.keys())])
     print(line)
     out.write(line+"\n")
-    
+
     for step, e in enumerate(energy_data):
         line = " ".join([f"{step:<8}"] + ["{0:<8.2f}".format(i) for i in e.values()])
         print(line)

@@ -1,14 +1,10 @@
-from ..parser.xyz import parse_xyz
 class DNAForce(object):
     """ Wrapper for the openMM force. """
 
-    def __init__(self, dna, OpenCLPatch=True):
+    def __init__(self, dna):
         self.periodic = dna.periodic
         self.force = None
         self.dna = dna
-        # The patch allows the crosstacking force to run in OpenCL
-        # introducing a small difference in the crosstacking energy
-        self.OpenCLPatch = OpenCLPatch
 
         # Define the dna force
         self.reset()
@@ -27,34 +23,22 @@ class DNAForce(object):
             else:
                 raise AttributeError()
 
-    def computeEnergy(self, system, trajectory):
-        # Parse trajectory
-        traj = parse_xyz('Tests/adna/traj.xyz')
+    def addForce(self, system):
+        """Add this force's OpenMM force to `system`. Forces that manage several OpenMM forces
+        (e.g. BasePair, CrossStacking) override this to add all of them.
 
-        # clear all forces on the system
-        system.clearForces()
-        # setup the force
-        self.setUpInteraction()
-        # for each item of the table:
-        # add the force item
+        The system takes ownership of the OpenMM force, so the interaction table is read before it is added."""
+        if hasattr(type(self), 'parameter_table'):
+            self.parameter_table
+        system.addForce(self.force)
 
-        # compute the energy for every frame
+    def _checked_box(self, box):
+        if self.periodic and box is None:
+            raise ValueError(f'{type(self).__name__} uses periodic boundary conditions: a box is required')
+        if not self.periodic and box is not None:
+            raise ValueError(f'{type(self).__name__} does not use periodic boundary conditions: no box expected')
+        return box
 
-        # return a Table with the energy
-
-    def computeSingleEnergy(self, system, trajectory):
-        # Parse trajectory
-        traj = parse_xyz('Tests/adna/traj.xyz')
-        # for each item of the table:
-        # clear all forces on the system
-        # system.clearForces()
-        # setup the force
-        # self.setUpInteraction()
-        # add the force item
-
-        # compute the energy for every frame
-
-        # return a table with the energy
 
 class ProteinDNAForce(DNAForce):
     def __init__(self, dna, protein):
